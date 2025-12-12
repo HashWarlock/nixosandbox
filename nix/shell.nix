@@ -63,6 +63,7 @@ in pkgs.mkShell {
     libGL
 
     # Display & VNC
+    xorg.xorgserver  # Provides Xvfb binary
     xvfb-run
     x11vnc
     novnc
@@ -70,6 +71,9 @@ in pkgs.mkShell {
     xdotool
     scrot
     imagemagick
+
+    # Network utilities
+    inetutils  # Provides hostname command
     
     # Development tools
     git
@@ -172,10 +176,9 @@ in pkgs.mkShell {
       ${pkgs.novnc}/bin/novnc --listen 6080 --vnc localhost:5900 &
     fi
     
-    # Install playwright browsers
-    if [ ! -d "$HOME/.cache/ms-playwright" ]; then
-      playwright install chromium
-    fi
+    # Use system Chromium instead of Playwright's bundled browser
+    export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${pkgs.chromium}/bin/chromium
+    echo "Using system Chromium: $PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"
     
     echo "🚀 NixOS Sandbox Ready"
     echo "   API:    http://localhost:8080"
