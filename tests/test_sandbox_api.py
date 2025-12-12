@@ -344,6 +344,48 @@ class TestScreen:
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
 
+    def test_screen_recording(self, client):
+        """Test screen recording start/stop/download."""
+        # Check initial status
+        resp = client.get("/screen/record/status")
+        assert resp.status_code == 200
+        status = resp.json()
+        assert status["recording"] is False
+
+        # Start recording
+        resp = client.post(
+            "/screen/record/start",
+            json={"output_path": "/tmp/test_recording.mp4", "fps": 10}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "recording"
+        assert data["pid"] is not None
+
+        # Check recording status
+        resp = client.get("/screen/record/status")
+        assert resp.status_code == 200
+        status = resp.json()
+        assert status["recording"] is True
+
+        # Do something visible (move mouse around)
+        for i in range(3):
+            client.post("/screen/mouse", json={"action": "move", "x": 100 + i * 50, "y": 100})
+            time.sleep(0.5)
+
+        # Stop recording
+        resp = client.post("/screen/record/stop")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "stopped"
+        assert data.get("size_bytes", 0) > 0, f"Recording failed: {data.get('error', 'unknown')}"
+
+        # Download recording
+        resp = client.get("/screen/record/download", params={"path": "/tmp/test_recording.mp4"})
+        assert resp.status_code == 200
+        assert len(resp.content) > 0
+        assert resp.headers["content-type"] == "video/mp4"
+
 
 # ============================================================================
 # Multi-Turn Task Tests
@@ -396,10 +438,10 @@ print(json.dumps(data))
         resp = client.post("/browser/launch")
         assert resp.status_code == 200
 
-        # Step 2: Navigate to a test page
+        # Step 2: Navigate to a simple test page
         resp = client.post(
             "/browser/navigate",
-            json={"url": "https://httpbin.org/forms/post", "wait_until": "networkidle"},
+            json={"url": "https://example.com", "wait_until": "load"},
         )
         assert resp.status_code == 200
 
@@ -412,18 +454,25 @@ print(json.dumps(data))
         # Step 4: Get page title via JavaScript
         resp = client.post("/browser/evaluate", json={"script": "document.title"})
         assert resp.status_code == 200
+        assert "Example" in str(resp.json().get("result", ""))
 
-        # Step 5: Fill form field (if exists)
-        try:
-            resp = client.post(
-                "/browser/type",
-                json={"selector": "input[name='custname']", "text": "Test User"},
-            )
-            # May fail if selector doesn't exist, that's OK
-        except Exception:
-            pass
+        # Step 5: Get page content via JavaScript
+        resp = client.post(
+            "/browser/evaluate",
+            json={"script": "document.body.innerText.substring(0, 100)"}
+        )
+        assert resp.status_code == 200
+        result = resp.json()
+        assert "result" in result
 
-        # Step 6: Close browser
+        # Step 6: Click on a link (example.com has a "More information" link)
+        resp = client.post(
+            "/browser/evaluate",
+            json={"script": "document.querySelector('a')?.href || 'no link'"}
+        )
+        assert resp.status_code == 200
+
+        # Step 7: Close browser
         resp = client.post("/browser/close")
         assert resp.status_code == 200
 

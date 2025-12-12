@@ -128,7 +128,7 @@ def auto_record(request, api_url, record_enabled, record_dir, record_fps):
     remote_path = f"/tmp/recordings/{test_class}_{test_name}_{timestamp}.mp4"
     local_path = local_dir / f"{test_name}_{timestamp}.mp4"
 
-    client = httpx.Client(base_url=api_url, timeout=60.0)
+    client = httpx.Client(base_url=api_url, timeout=120.0)
     recording_started = False
 
     try:
@@ -139,38 +139,50 @@ def auto_record(request, api_url, record_enabled, record_dir, record_fps):
         )
         if resp.status_code == 200:
             recording_started = True
+            print(f"\n  Recording started: {remote_path}")
             # Small delay to ensure recording has started
-            time.sleep(0.5)
+            time.sleep(1.0)
+        else:
+            print(f"\n  Warning: Could not start recording: {resp.status_code} - {resp.text}")
     except Exception as e:
-        print(f"Warning: Could not start recording: {e}")
+        print(f"\n  Warning: Could not start recording: {e}")
 
     yield
 
     if recording_started:
         try:
-            # Stop recording
-            time.sleep(0.5)  # Ensure last frames are captured
+            # Stop recording - give it time to write final frames
+            time.sleep(1.0)
             resp = client.post("/screen/record/stop")
 
             if resp.status_code == 200:
                 result = resp.json()
+                print(f"\n  Recording stopped: {result}")
+
+                # Wait a moment for file to be finalized
+                time.sleep(0.5)
 
                 # Download the recording
                 if result.get("size_bytes", 0) > 0:
                     download_resp = client.get(
                         "/screen/record/download",
-                        params={"path": remote_path}
+                        params={"path": remote_path},
+                        timeout=120.0
                     )
                     if download_resp.status_code == 200:
                         with open(local_path, "wb") as f:
                             f.write(download_resp.content)
-                        print(f"\n  Recording saved: {local_path}")
+                        print(f"  Recording saved: {local_path} ({len(download_resp.content)} bytes)")
                     else:
-                        print(f"\n  Warning: Could not download recording")
+                        print(f"\n  Warning: Could not download recording: {download_resp.status_code}")
+                elif result.get("error"):
+                    print(f"\n  Warning: Recording error: {result.get('error')}")
                 else:
-                    print(f"\n  Warning: Recording file is empty")
+                    print(f"\n  Warning: Recording file is empty or not created")
+            else:
+                print(f"\n  Warning: Could not stop recording: {resp.status_code} - {resp.text}")
         except Exception as e:
-            print(f"\n  Warning: Could not stop recording: {e}")
+            print(f"\n  Warning: Could not stop/download recording: {e}")
         finally:
             client.close()
 

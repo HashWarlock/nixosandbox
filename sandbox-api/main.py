@@ -479,6 +479,7 @@ class RecordingManager:
         self.process: Optional[asyncio.subprocess.Process] = None
         self.output_path: Optional[str] = None
         self.recording = False
+        self.start_time: Optional[float] = None
 
     async def start(self, output_path: str, fps: int = 15, quality: int = 23) -> dict:
         """Start recording the X11 display."""
@@ -489,6 +490,7 @@ class RecordingManager:
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
         # ffmpeg command to record X11 display
+        # Using -t for max duration as safety, SIGINT to stop gracefully
         cmd = [
             "ffmpeg",
             "-y",  # Overwrite output
@@ -500,17 +502,28 @@ class RecordingManager:
             "-preset", "ultrafast",
             "-crf", str(quality),
             "-pix_fmt", "yuv420p",
+            "-t", "3600",  # Max 1 hour recording
             output_path,
         ]
 
         self.process = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env={**os.environ, "DISPLAY": DISPLAY},
         )
         self.recording = True
+        self.start_time = time.time()
+
+        # Give ffmpeg a moment to start
+        await asyncio.sleep(0.5)
+
+        # Check if process is still running
+        if self.process.returncode is not None:
+            stderr = await self.process.stderr.read()
+            self.recording = False
+            raise HTTPException(500, f"ffmpeg failed to start: {stderr.decode()}")
 
         return {
             "status": "recording",
@@ -524,24 +537,35 @@ class RecordingManager:
         if not self.recording or not self.process:
             raise HTTPException(400, "No recording in progress")
 
-        # Send 'q' to ffmpeg to stop gracefully
+        output_path = self.output_path
+        duration = time.time() - self.start_time if self.start_time else 0
+
+        # Send SIGINT (Ctrl+C) to ffmpeg for graceful shutdown
         try:
-            self.process.stdin.write(b"q")
-            await self.process.stdin.drain()
+            import signal
+            self.process.send_signal(signal.SIGINT)
         except Exception:
             pass
 
         # Wait for process to finish (with timeout)
+        stderr_output = b""
         try:
-            await asyncio.wait_for(self.process.wait(), timeout=10)
+            _, stderr_output = await asyncio.wait_for(
+                self.process.communicate(),
+                timeout=15
+            )
         except asyncio.TimeoutError:
             self.process.terminate()
-            await self.process.wait()
+            try:
+                await asyncio.wait_for(self.process.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                self.process.kill()
+                await self.process.wait()
 
         self.recording = False
-        output_path = self.output_path
         self.output_path = None
         self.process = None
+        self.start_time = None
 
         # Verify file was created
         if output_path and os.path.exists(output_path):
@@ -550,20 +574,26 @@ class RecordingManager:
                 "status": "stopped",
                 "output_path": output_path,
                 "size_bytes": size,
+                "duration_seconds": round(duration, 2),
             }
         else:
             return {
                 "status": "stopped",
                 "output_path": output_path,
-                "error": "Output file not created",
+                "error": f"Output file not created. ffmpeg stderr: {stderr_output.decode()[:500]}",
             }
 
     async def status(self) -> dict:
         """Get current recording status."""
+        duration = None
+        if self.start_time:
+            duration = round(time.time() - self.start_time, 2)
+
         return {
             "recording": self.recording,
             "output_path": self.output_path,
             "pid": self.process.pid if self.process else None,
+            "duration_seconds": duration,
         }
 
 
