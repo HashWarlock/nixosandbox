@@ -71,6 +71,7 @@ in pkgs.mkShell {
     xdotool
     scrot
     imagemagick
+    ffmpeg          # Screen recording
 
     # Network utilities
     inetutils  # Provides hostname command

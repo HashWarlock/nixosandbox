@@ -81,12 +81,12 @@ curl -X POST http://localhost:8080/shell/exec \
   -d '{"command": "echo hello"}'
 
 # Execute Python
-curl -X POST http://localhost:8080/code/execute \
+curl -X POST https://c7712468c1e19db10e63ab2f030914b19ad3766b-8080.dstack-pha-prod3.phala.network/code/execute \
   -H "Content-Type: application/json" \
   -d '{"code": "print(2+2)", "language": "python"}'
 
 # Browser screenshot
-curl http://localhost:8080/browser/screenshot --output screenshot.png
+curl https://c7712468c1e19db10e63ab2f030914b19ad3766b-8080.dstack-pha-prod3.phala.network/browser/screenshot --output screenshot.png
 
 # Desktop screenshot
 curl http://localhost:8080/screen/screenshot --output desktop.png
@@ -121,6 +121,123 @@ curl http://localhost:8080/screen/screenshot --output desktop.png
 - `GET /screen/screenshot` — Capture desktop
 - `POST /screen/mouse` — Mouse actions
 - `POST /screen/keyboard` — Keyboard actions
+- `POST /screen/record/start` — Start screen recording
+- `POST /screen/record/stop` — Stop recording and save
+- `GET /screen/record/status` — Get recording status
+- `GET /screen/record/download` — Download recorded video
+
+## Testing
+
+A comprehensive test suite is included to validate API functionality and multi-turn task execution.
+
+### Setup
+
+```bash
+cd tests
+pip install -r requirements.txt
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+./tests/run_tests.sh http://localhost:8080
+
+# Or using pytest directly
+pytest tests/test_sandbox_api.py -v --api-url http://localhost:8080
+
+# Run specific test categories
+pytest tests/ -v --api-url http://localhost:8080 -k "health"      # Health checks
+pytest tests/ -v --api-url http://localhost:8080 -k "shell"       # Shell execution
+pytest tests/ -v --api-url http://localhost:8080 -k "browser"     # Browser automation
+pytest tests/ -v --api-url http://localhost:8080 -k "screen"      # Desktop/screen
+pytest tests/ -v --api-url http://localhost:8080 -k "multi_turn"  # Multi-turn workflows
+pytest tests/ -v --api-url http://localhost:8080 -k "goal"        # Goal-oriented tasks
+
+# Verbose output
+pytest tests/ -v -s --api-url http://localhost:8080
+```
+
+### Test Categories
+
+| Category | Description |
+|----------|-------------|
+| `TestHealthAndInfo` | Basic connectivity and status checks |
+| `TestShellExecution` | Shell commands, env vars, pipelines, timeouts |
+| `TestCodeExecution` | Python, bash execution and error handling |
+| `TestFileOperations` | Read, write, list, nested directories |
+| `TestBrowser` | Launch, navigate, screenshot, click, evaluate |
+| `TestScreen` | Desktop screenshot, mouse, keyboard |
+| `TestMultiTurnTasks` | Complex multi-step workflows |
+| `TestStress` | Rapid commands, large files, concurrency |
+| `TestGoalOrientedTasks` | Real-world automation scenarios |
+
+### Multi-Turn Task Examples
+
+The test suite includes realistic multi-turn scenarios:
+
+- **Create and execute scripts** — Write code, run it, verify output
+- **Web form interaction** — Navigate, fill forms, submit
+- **File processing pipeline** — Create files, process, aggregate results
+- **Iterative development** — Write buggy code, test, fix, re-test
+- **Visual testing** — Navigate pages, compare screenshots
+- **Dev environment setup** — Create project structure, run tests
+
+### Screen Recording
+
+Tests can automatically record the sandbox screen during execution for visual verification:
+
+```bash
+# Record all tests
+./tests/run_tests.sh http://localhost:8080 --record
+
+# Record specific tests
+pytest tests/ -v --api-url http://localhost:8080 --record -k "browser"
+
+# Custom recording directory and framerate
+pytest tests/ -v --api-url http://localhost:8080 --record --record-dir ./my-recordings --record-fps 30
+```
+
+Recordings are saved as MP4 files organized by test class:
+```
+recordings/
+├── TestBrowser/
+│   ├── test_browser_launch_20241212_171500.mp4
+│   ├── test_browser_navigate_20241212_171505.mp4
+│   └── ...
+├── TestMultiTurnTasks/
+│   ├── test_web_form_interaction_20241212_171530.mp4
+│   └── ...
+└── ...
+```
+
+#### Manual Recording in Tests
+
+For fine-grained control, use the `record_test` fixture:
+
+```python
+def test_custom_workflow(client, record_test):
+    # Setup (not recorded)
+    client.post("/browser/launch")
+
+    # Record only the important part
+    with record_test("my_workflow"):
+        client.post("/browser/navigate", json={"url": "https://example.com"})
+        client.post("/browser/click", json={"selector": "button"})
+        # ... more actions ...
+
+    # Cleanup (not recorded)
+    client.post("/browser/close")
+```
+
+### Environment Variable
+
+You can also set the API URL via environment variable:
+
+```bash
+export SANDBOX_API_URL=http://localhost:8080
+pytest tests/ -v
+```
 
 ## Configuration
 

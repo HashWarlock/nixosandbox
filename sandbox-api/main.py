@@ -469,6 +469,148 @@ async def screen_keyboard(req: KeyboardActionRequest):
     return {"status": "ok"}
 
 # ============================================================================
+# Screen Recording
+# ============================================================================
+
+class RecordingManager:
+    """Manages screen recording via ffmpeg."""
+
+    def __init__(self):
+        self.process: Optional[asyncio.subprocess.Process] = None
+        self.output_path: Optional[str] = None
+        self.recording = False
+
+    async def start(self, output_path: str, fps: int = 15, quality: int = 23) -> dict:
+        """Start recording the X11 display."""
+        if self.recording:
+            raise HTTPException(400, "Recording already in progress")
+
+        self.output_path = output_path
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+        # ffmpeg command to record X11 display
+        cmd = [
+            "ffmpeg",
+            "-y",  # Overwrite output
+            "-f", "x11grab",
+            "-video_size", "1920x1080",
+            "-framerate", str(fps),
+            "-i", DISPLAY,
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", str(quality),
+            "-pix_fmt", "yuv420p",
+            output_path,
+        ]
+
+        self.process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "DISPLAY": DISPLAY},
+        )
+        self.recording = True
+
+        return {
+            "status": "recording",
+            "output_path": output_path,
+            "fps": fps,
+            "pid": self.process.pid,
+        }
+
+    async def stop(self) -> dict:
+        """Stop recording and return the video path."""
+        if not self.recording or not self.process:
+            raise HTTPException(400, "No recording in progress")
+
+        # Send 'q' to ffmpeg to stop gracefully
+        try:
+            self.process.stdin.write(b"q")
+            await self.process.stdin.drain()
+        except Exception:
+            pass
+
+        # Wait for process to finish (with timeout)
+        try:
+            await asyncio.wait_for(self.process.wait(), timeout=10)
+        except asyncio.TimeoutError:
+            self.process.terminate()
+            await self.process.wait()
+
+        self.recording = False
+        output_path = self.output_path
+        self.output_path = None
+        self.process = None
+
+        # Verify file was created
+        if output_path and os.path.exists(output_path):
+            size = os.path.getsize(output_path)
+            return {
+                "status": "stopped",
+                "output_path": output_path,
+                "size_bytes": size,
+            }
+        else:
+            return {
+                "status": "stopped",
+                "output_path": output_path,
+                "error": "Output file not created",
+            }
+
+    async def status(self) -> dict:
+        """Get current recording status."""
+        return {
+            "recording": self.recording,
+            "output_path": self.output_path,
+            "pid": self.process.pid if self.process else None,
+        }
+
+
+recording_mgr = RecordingManager()
+
+
+class RecordingStartRequest(BaseModel):
+    output_path: str = "/tmp/recording.mp4"
+    fps: int = 15
+    quality: int = 23  # CRF value (lower = better quality, 18-28 is good range)
+
+
+@app.post("/screen/record/start")
+async def start_recording(req: RecordingStartRequest):
+    """Start recording the screen."""
+    return await recording_mgr.start(req.output_path, req.fps, req.quality)
+
+
+@app.post("/screen/record/stop")
+async def stop_recording():
+    """Stop recording and save the video."""
+    return await recording_mgr.stop()
+
+
+@app.get("/screen/record/status")
+async def recording_status():
+    """Get current recording status."""
+    return await recording_mgr.status()
+
+
+@app.get("/screen/record/download")
+async def download_recording(path: str = Query(...)):
+    """Download a recorded video file."""
+    if not os.path.exists(path):
+        raise HTTPException(404, "Recording file not found")
+
+    async with aiofiles.open(path, "rb") as f:
+        content = await f.read()
+
+    return Response(
+        content=content,
+        media_type="video/mp4",
+        headers={"Content-Disposition": f"attachment; filename={os.path.basename(path)}"}
+    )
+
+
+# ============================================================================
 # Main
 # ============================================================================
 
