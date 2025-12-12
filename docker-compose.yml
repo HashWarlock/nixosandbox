@@ -18,8 +18,7 @@ services:
       - "${NOVNC_PORT:-6080}:6080"            # noVNC web client
       - "${CDP_PORT:-9222}:9222"              # Chrome DevTools Protocol
     volumes:
-      - ./nix:/etc/nixos:ro                   # NixOS configuration
-      - ./sandbox-api:/opt/sandbox-api:ro    # Control API source
+      - sandbox-app:/app                     # Cloned repo and state
       - sandbox-data:/home/sandbox           # Persistent workspace
       - sandbox-nix:/nix                     # Nix store cache
       - /dev/shm:/dev/shm                    # Shared memory for browser
@@ -31,6 +30,9 @@ services:
       - WORKSPACE=/home/sandbox/workspace
       - BROWSER_HEADLESS=${BROWSER_HEADLESS:-false}
       - TZ=${TZ:-UTC}
+      - GITHUB_REPO=${GITHUB_REPO:-https://github.com/HashWarlock/nixosandbox.git}
+      - GIT_COMMIT_HASH=${GIT_COMMIT_HASH:-HEAD}
+      - UPDATE_CODE=${UPDATE_CODE:-false}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -40,12 +42,27 @@ services:
     restart: unless-stopped
     command: >
       sh -c "
+        mkdir -p /app/.state &&
+        if [ ! -f /app/.state/initialized ] || [ \"$$UPDATE_CODE\" = 'true' ]; then
+          echo 'Cloning repository...' &&
+          rm -rf /app/repo &&
+          git clone $$GITHUB_REPO /app/repo &&
+          cd /app/repo &&
+          git checkout $$GIT_COMMIT_HASH &&
+          touch /app/.state/initialized &&
+          echo 'Repository cloned and checked out to commit: '$$GIT_COMMIT_HASH;
+        else
+          echo 'Repository already initialized, skipping clone...';
+        fi &&
+        cd /app/repo &&
         nix-channel --add https://nixos.org/channels/nixos-24.05 nixpkgs &&
         nix-channel --update &&
-        nix-shell /etc/nixos/shell.nix --run 'python /opt/sandbox-api/main.py'
+        nix-shell /app/repo/nix/shell.nix --run 'python /app/repo/sandbox-api/main.py'
       "
 
 volumes:
+  sandbox-app:
+    driver: local
   sandbox-data:
     driver: local
   sandbox-nix:
