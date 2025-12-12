@@ -1,0 +1,56 @@
+version: "3.8"
+
+services:
+  nixos-sandbox:
+    image: nixos/nix:latest
+    container_name: nixos-sandbox
+    hostname: sandbox
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    cap_add:
+      - SYS_ADMIN
+      - NET_ADMIN
+    ports:
+      - "${SANDBOX_API_PORT:-8080}:8080"      # Control API
+      - "${VNC_PORT:-5900}:5900"              # VNC
+      - "${NOVNC_PORT:-6080}:6080"            # noVNC web client
+      - "${CDP_PORT:-9222}:9222"              # Chrome DevTools Protocol
+    volumes:
+      - ./nix:/etc/nixos:ro                   # NixOS configuration
+      - ./sandbox-api:/opt/sandbox-api:ro    # Control API source
+      - sandbox-data:/home/sandbox           # Persistent workspace
+      - sandbox-nix:/nix                     # Nix store cache
+      - /dev/shm:/dev/shm                    # Shared memory for browser
+    environment:
+      - SANDBOX_API_HOST=0.0.0.0
+      - SANDBOX_API_PORT=8080
+      - DISPLAY=:99
+      - HOME=/home/sandbox
+      - WORKSPACE=/home/sandbox/workspace
+      - BROWSER_HEADLESS=${BROWSER_HEADLESS:-false}
+      - TZ=${TZ:-UTC}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    command: >
+      sh -c "
+        nix-channel --add https://nixos.org/channels/nixos-24.05 nixpkgs &&
+        nix-channel --update &&
+        nix-shell /etc/nixos/shell.nix --run 'python /opt/sandbox-api/main.py'
+      "
+
+volumes:
+  sandbox-data:
+    driver: local
+  sandbox-nix:
+    driver: local
+
+networks:
+  default:
+    name: sandbox-network

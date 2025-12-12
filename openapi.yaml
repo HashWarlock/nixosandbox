@@ -1,0 +1,615 @@
+openapi: 3.1.0
+info:
+  title: NixOS Sandbox API
+  description: Control API for NixOS-based AI agent sandbox
+  version: 1.0.0
+  license:
+    name: Apache 2.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local sandbox
+
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      responses:
+        "200":
+          description: Sandbox is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /sandbox/info:
+    get:
+      operationId: getSandboxInfo
+      summary: Get sandbox environment info
+      responses:
+        "200":
+          description: Sandbox info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxInfo"
+
+  # Shell Operations
+  /shell/exec:
+    post:
+      operationId: execCommand
+      summary: Execute a shell command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShellExecRequest"
+      responses:
+        "200":
+          description: Command executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShellExecResponse"
+
+  /shell/stream:
+    post:
+      operationId: execCommandStream
+      summary: Execute command with streaming output
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShellExecRequest"
+      responses:
+        "200":
+          description: Streaming output
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  # Code Execution
+  /code/execute:
+    post:
+      operationId: executeCode
+      summary: Execute code in a language runtime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CodeExecRequest"
+      responses:
+        "200":
+          description: Code executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CodeExecResponse"
+
+  # File Operations
+  /file/read:
+    get:
+      operationId: readFile
+      summary: Read file contents
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: encoding
+          in: query
+          schema:
+            type: string
+            default: utf-8
+      responses:
+        "200":
+          description: File contents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileReadResponse"
+
+  /file/write:
+    post:
+      operationId: writeFile
+      summary: Write content to file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileWriteRequest"
+      responses:
+        "200":
+          description: File written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileWriteResponse"
+
+  /file/list:
+    get:
+      operationId: listFiles
+      summary: List directory contents
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: recursive
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Directory listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileListResponse"
+
+  /file/upload:
+    post:
+      operationId: uploadFile
+      summary: Upload a file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                path:
+                  type: string
+      responses:
+        "200":
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileWriteResponse"
+
+  /file/download:
+    get:
+      operationId: downloadFile
+      summary: Download a file
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File contents
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  # Browser Operations
+  /browser/launch:
+    post:
+      operationId: launchBrowser
+      summary: Launch browser instance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserLaunchRequest"
+      responses:
+        "200":
+          description: Browser launched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserInfo"
+
+  /browser/navigate:
+    post:
+      operationId: browserNavigate
+      summary: Navigate to URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserNavigateRequest"
+      responses:
+        "200":
+          description: Navigation complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserPageInfo"
+
+  /browser/screenshot:
+    get:
+      operationId: browserScreenshot
+      summary: Take browser screenshot
+      parameters:
+        - name: full_page
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [png, jpeg, webp]
+            default: png
+      responses:
+        "200":
+          description: Screenshot
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreenshotResponse"
+
+  /browser/click:
+    post:
+      operationId: browserClick
+      summary: Click element or coordinates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserClickRequest"
+      responses:
+        "200":
+          description: Click performed
+
+  /browser/type:
+    post:
+      operationId: browserType
+      summary: Type text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserTypeRequest"
+      responses:
+        "200":
+          description: Text typed
+
+  /browser/evaluate:
+    post:
+      operationId: browserEvaluate
+      summary: Evaluate JavaScript in browser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserEvalRequest"
+      responses:
+        "200":
+          description: Evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserEvalResponse"
+
+  /browser/close:
+    post:
+      operationId: closeBrowser
+      summary: Close browser instance
+      responses:
+        "200":
+          description: Browser closed
+
+  # Screen Operations (Desktop)
+  /screen/screenshot:
+    get:
+      operationId: screenScreenshot
+      summary: Capture entire desktop
+      responses:
+        "200":
+          description: Desktop screenshot
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+
+  /screen/mouse:
+    post:
+      operationId: screenMouse
+      summary: Mouse action on desktop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MouseActionRequest"
+      responses:
+        "200":
+          description: Action performed
+
+  /screen/keyboard:
+    post:
+      operationId: screenKeyboard
+      summary: Keyboard action on desktop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyboardActionRequest"
+      responses:
+        "200":
+          description: Action performed
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        uptime:
+          type: number
+        services:
+          type: object
+
+    SandboxInfo:
+      type: object
+      properties:
+        hostname:
+          type: string
+        workspace:
+          type: string
+        display:
+          type: string
+        cdp_url:
+          type: string
+        vnc_url:
+          type: string
+
+    ShellExecRequest:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+        cwd:
+          type: string
+        timeout:
+          type: integer
+          default: 30
+        env:
+          type: object
+          additionalProperties:
+            type: string
+
+    ShellExecResponse:
+      type: object
+      properties:
+        stdout:
+          type: string
+        stderr:
+          type: string
+        exit_code:
+          type: integer
+        duration_ms:
+          type: number
+
+    CodeExecRequest:
+      type: object
+      required: [code, language]
+      properties:
+        code:
+          type: string
+        language:
+          type: string
+          enum: [python, javascript, typescript, go, rust, bash]
+        timeout:
+          type: integer
+          default: 30
+
+    CodeExecResponse:
+      type: object
+      properties:
+        output:
+          type: string
+        error:
+          type: string
+        exit_code:
+          type: integer
+        duration_ms:
+          type: number
+
+    FileReadResponse:
+      type: object
+      properties:
+        content:
+          type: string
+        size:
+          type: integer
+        mime_type:
+          type: string
+
+    FileWriteRequest:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+        mode:
+          type: string
+          default: "644"
+
+    FileWriteResponse:
+      type: object
+      properties:
+        path:
+          type: string
+        size:
+          type: integer
+
+    FileListResponse:
+      type: object
+      properties:
+        path:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileEntry"
+
+    FileEntry:
+      type: object
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        type:
+          type: string
+          enum: [file, directory, symlink]
+        size:
+          type: integer
+        modified:
+          type: string
+          format: date-time
+
+    BrowserLaunchRequest:
+      type: object
+      properties:
+        headless:
+          type: boolean
+          default: false
+        viewport:
+          type: object
+          properties:
+            width:
+              type: integer
+              default: 1920
+            height:
+              type: integer
+              default: 1080
+
+    BrowserInfo:
+      type: object
+      properties:
+        cdp_url:
+          type: string
+        ws_endpoint:
+          type: string
+
+    BrowserNavigateRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+        wait_until:
+          type: string
+          enum: [load, domcontentloaded, networkidle]
+          default: load
+
+    BrowserPageInfo:
+      type: object
+      properties:
+        url:
+          type: string
+        title:
+          type: string
+
+    ScreenshotResponse:
+      type: object
+      properties:
+        data:
+          type: string
+          description: Base64 encoded image
+        format:
+          type: string
+
+    BrowserClickRequest:
+      type: object
+      properties:
+        selector:
+          type: string
+        x:
+          type: integer
+        y:
+          type: integer
+        button:
+          type: string
+          enum: [left, right, middle]
+          default: left
+
+    BrowserTypeRequest:
+      type: object
+      required: [text]
+      properties:
+        selector:
+          type: string
+        text:
+          type: string
+        delay:
+          type: integer
+          default: 0
+
+    BrowserEvalRequest:
+      type: object
+      required: [script]
+      properties:
+        script:
+          type: string
+
+    BrowserEvalResponse:
+      type: object
+      properties:
+        result: {}
+
+    MouseActionRequest:
+      type: object
+      required: [action, x, y]
+      properties:
+        action:
+          type: string
+          enum: [click, double_click, move, drag]
+        x:
+          type: integer
+        y:
+          type: integer
+        button:
+          type: string
+          enum: [left, right, middle]
+          default: left
+
+    KeyboardActionRequest:
+      type: object
+      properties:
+        text:
+          type: string
+        key:
+          type: string
+        modifiers:
+          type: array
+          items:
+            type: string
+            enum: [ctrl, alt, shift, meta]
