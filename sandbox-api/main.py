@@ -102,11 +102,15 @@ class BrowserManager:
     async def launch(self, headless: bool = False):
         if not self.playwright:
             self.playwright = await async_playwright().start()
-        
+
         if self.browser:
             await self.browser.close()
-        
+
+        # Use system Chromium if PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set
+        executable_path = os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
+
         self.browser = await self.playwright.chromium.launch(
+            executable_path=executable_path,
             headless=headless,
             args=[
                 f"--remote-debugging-port={CDP_PORT}",

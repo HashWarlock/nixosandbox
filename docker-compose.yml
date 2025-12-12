@@ -19,6 +19,8 @@ services:
       - "${CDP_PORT:-9222}:9222"              # Chrome DevTools Protocol
     volumes:
       - sandbox-app:/app                     # Cloned repo and state
+      - ./nix:/app/repo/nix:ro               # Local nix config (override cloned)
+      - ./sandbox-api:/app/repo/sandbox-api:ro  # Local API source (override cloned)
       - sandbox-data:/home/sandbox           # Persistent workspace
       - sandbox-nix:/nix                     # Nix store cache
       - /dev/shm:/dev/shm                    # Shared memory for browser
