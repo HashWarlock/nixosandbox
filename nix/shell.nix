@@ -75,7 +75,18 @@ in pkgs.mkShell {
 
     # Network utilities
     inetutils  # Provides hostname command
-    
+
+    # Fonts for browser rendering
+    dejavu_fonts
+    liberation_ttf
+    noto-fonts
+    noto-fonts-emoji
+    font-awesome
+    fontconfig
+
+    # D-Bus for browser communication
+    dbus
+
     # Development tools
     git
     curl
@@ -145,7 +156,22 @@ in pkgs.mkShell {
     ]}:$LD_LIBRARY_PATH
 
     # Create directories
-    mkdir -p $HOME $WORKSPACE /tmp/.X11-unix
+    mkdir -p $HOME $WORKSPACE /tmp/.X11-unix /tmp/dbus
+
+    # Setup fontconfig for browser rendering
+    export FONTCONFIG_PATH=${pkgs.fontconfig.out}/etc/fonts
+    export FONTCONFIG_FILE=${pkgs.fontconfig.out}/etc/fonts/fonts.conf
+    mkdir -p $HOME/.cache/fontconfig
+    fc-cache -f 2>/dev/null || true
+
+    # Start D-Bus session for browser communication
+    if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+      export DBUS_SESSION_BUS_ADDRESS="unix:path=/tmp/dbus/session_bus_socket"
+      if ! pgrep -x "dbus-daemon" > /dev/null; then
+        dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --nofork --nopidfile &
+        sleep 0.5
+      fi
+    fi
 
     # Start Xvfb virtual display
     if ! pgrep -x "Xvfb" > /dev/null; then

@@ -43,10 +43,13 @@ def pytest_configure(config):
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
     config.addinivalue_line(
-        "markers", "browser: marks tests that require browser"
+        "markers", "browser: marks tests that require browser (will be recorded with --record)"
     )
     config.addinivalue_line(
         "markers", "desktop: marks tests that require desktop/X11"
+    )
+    config.addinivalue_line(
+        "markers", "record: explicitly mark test for screen recording"
     )
 
 
@@ -101,11 +104,20 @@ async def async_client(api_url):
 @pytest.fixture(autouse=True)
 def auto_record(request, api_url, record_enabled, record_dir, record_fps):
     """
-    Automatically record screen during each test when --record is enabled.
+    Automatically record screen during browser tests when --record is enabled.
 
+    Only records tests marked with @pytest.mark.browser or @pytest.mark.record.
     Recordings are saved to: {record_dir}/{test_class}/{test_name}_{timestamp}.mp4
     """
     if not record_enabled:
+        yield
+        return
+
+    # Only record tests marked with 'browser' or 'record'
+    markers = [m.name for m in request.node.iter_markers()]
+    should_record = "browser" in markers or "record" in markers
+
+    if not should_record:
         yield
         return
 

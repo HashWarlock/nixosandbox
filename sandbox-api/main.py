@@ -99,7 +99,7 @@ class BrowserManager:
         self.browser: Optional[Browser] = None
         self.page: Optional[Page] = None
     
-    async def launch(self, headless: bool = False):
+    async def launch(self, headless: bool = False, viewport_width: int = 1280, viewport_height: int = 720):
         if not self.playwright:
             self.playwright = await async_playwright().start()
 
@@ -109,21 +109,51 @@ class BrowserManager:
         # Use system Chromium if PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH is set
         executable_path = os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")
 
+        # Browser args for proper rendering in virtual display
+        browser_args = [
+            f"--remote-debugging-port={CDP_PORT}",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            # Rendering improvements
+            "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-features=TranslateUI",
+            "--disable-ipc-flooding-protection",
+            # Font rendering
+            "--font-render-hinting=none",
+            "--disable-font-subpixel-positioning",
+            # Window settings
+            f"--window-size={viewport_width},{viewport_height}",
+            "--window-position=0,0",
+            "--start-maximized",
+            # Enable GPU for better rendering (works with virtual display)
+            "--enable-gpu-rasterization",
+            "--enable-features=VaapiVideoDecoder",
+            "--ignore-gpu-blocklist",
+        ]
+
+        # Add any extra args from environment
+        extra_args = os.getenv("BROWSER_EXTRA_ARGS", "")
+        if extra_args:
+            browser_args.extend(extra_args.split())
+
         self.browser = await self.playwright.chromium.launch(
             executable_path=executable_path,
             headless=headless,
-            args=[
-                f"--remote-debugging-port={CDP_PORT}",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ]
+            args=browser_args,
         )
-        self.page = await self.browser.new_page()
+
+        # Create page with proper viewport
+        self.page = await self.browser.new_page(
+            viewport={"width": viewport_width, "height": viewport_height},
+            device_scale_factor=1,
+        )
+
         return {
             "cdp_url": f"http://localhost:{CDP_PORT}",
-            "ws_endpoint": self.browser.contexts[0].pages[0].url if self.browser.contexts else None
+            "viewport": {"width": viewport_width, "height": viewport_height},
         }
     
     async def ensure_page(self) -> Page:

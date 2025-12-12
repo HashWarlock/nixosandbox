@@ -239,6 +239,7 @@ class TestFileOperations:
 # ============================================================================
 
 
+@pytest.mark.browser
 class TestBrowser:
     """Browser automation tests."""
 
@@ -429,6 +430,7 @@ print(json.dumps(data))
         resp = client.post("/shell/exec", json={"command": "rm test_script.py"})
         assert resp.status_code == 200
 
+    @pytest.mark.browser
     def test_web_form_interaction(self, client):
         """
         Multi-turn: Navigate to a page, interact with form elements.
@@ -527,6 +529,7 @@ print(f"Total: {total}")
         resp = client.post("/shell/exec", json={"command": "rm data_*.txt"})
         assert resp.status_code == 200
 
+    @pytest.mark.browser
     def test_browser_screenshot_comparison(self, client):
         """
         Multi-turn: Navigate to different pages, compare screenshots.
@@ -613,6 +616,7 @@ print("Tests passed!")
         # Step 6: Clean up
         client.post("/shell/exec", json={"command": "rm math_utils.py"})
 
+    @pytest.mark.browser
     def test_desktop_automation_workflow(self, client):
         """
         Multi-turn: Combine browser and desktop automation.
@@ -771,6 +775,7 @@ test_main()
         # Clean up
         client.post("/shell/exec", json={"command": "rm -rf myproject"})
 
+    @pytest.mark.browser
     def test_goal_web_scraping(self, client):
         """
         Goal: Extract information from a web page.
@@ -908,6 +913,480 @@ print(json.dumps(results))
 
         # Clean up
         client.post("/shell/exec", json={"command": "rm utils.py run_tests.py"})
+
+
+# ============================================================================
+# Web Scraping Tests (ESPN, Polymarket, etc.)
+# ============================================================================
+
+
+@pytest.mark.browser
+class TestWebScraping:
+    """
+    Web scraping tests for real-world websites.
+    These tests verify the browser can render complex pages and extract data.
+    """
+
+    def test_espn_homepage_loads(self, client):
+        """
+        Verify ESPN homepage loads and renders properly.
+        Checks for main navigation, headlines, and sports content.
+        """
+        # Launch browser
+        resp = client.post("/browser/launch", params={"headless": False})
+        assert resp.status_code == 200
+
+        # Navigate to ESPN
+        resp = client.post(
+            "/browser/navigate",
+            json={"url": "https://www.espn.com", "wait_until": "networkidle"},
+        )
+        assert resp.status_code == 200
+        assert "espn" in resp.json()["url"].lower()
+
+        # Wait for page to fully render
+        time.sleep(2)
+
+        # Take screenshot to verify rendering
+        resp = client.get("/browser/screenshot")
+        assert resp.status_code == 200
+        img = Image.open(io.BytesIO(resp.content))
+        assert img.width >= 1024, "Screenshot should be at least 1024px wide"
+        assert img.height >= 600, "Screenshot should be at least 600px tall"
+
+        # Verify page title
+        resp = client.post("/browser/evaluate", json={"script": "document.title"})
+        assert resp.status_code == 200
+        title = resp.json().get("result", "")
+        assert "ESPN" in title or "Sports" in title.lower(), f"Expected ESPN title, got: {title}"
+
+        # Check for navigation elements
+        resp = client.post(
+            "/browser/evaluate",
+            json={"script": "document.querySelectorAll('nav, header').length > 0"}
+        )
+        assert resp.status_code == 200
+        assert resp.json().get("result") is True, "Page should have navigation/header elements"
+
+        # Check for sport-related content
+        resp = client.post(
+            "/browser/evaluate",
+            json={"script": "document.body.innerText.length"}
+        )
+        assert resp.status_code == 200
+        text_length = resp.json().get("result", 0)
+        assert text_length > 1000, f"Page should have substantial text content, got {text_length} chars"
+
+        # Close browser
+        resp = client.post("/browser/close")
+        assert resp.status_code == 200
+
+    def test_espn_extract_headlines(self, client):
+        """
+        Extract headlines from ESPN homepage.
+        Demonstrates scraping news/sports headlines.
+        """
+        # Launch browser
+        client.post("/browser/launch", params={"headless": False})
+
+        # Navigate to ESPN
+        resp = client.post(
+            "/browser/navigate",
+            json={"url": "https://www.espn.com", "wait_until": "networkidle"},
+        )
+        assert resp.status_code == 200
+
+        time.sleep(2)
+
+        # Extract headlines - look for common headline patterns
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    (() => {
+                        // Try various selectors for headlines
+                        const selectors = [
+                            'h1', 'h2', 'h3',
+                            '[class*="headline"]',
+                            '[class*="title"]',
+                            'article h1', 'article h2',
+                            '.contentItem__content h2'
+                        ];
+
+                        const headlines = new Set();
+                        for (const selector of selectors) {
+                            document.querySelectorAll(selector).forEach(el => {
+                                const text = el.textContent.trim();
+                                if (text.length > 10 && text.length < 200) {
+                                    headlines.add(text);
+                                }
+                            });
+                        }
+                        return Array.from(headlines).slice(0, 10);
+                    })()
+                """
+            }
+        )
+        assert resp.status_code == 200
+        headlines = resp.json().get("result", [])
+        assert isinstance(headlines, list), "Should return a list of headlines"
+        assert len(headlines) > 0, "Should find at least one headline"
+        print(f"\n  Found {len(headlines)} headlines from ESPN")
+        for h in headlines[:5]:
+            print(f"    - {h[:80]}...")
+
+        # Save extracted data
+        import json
+        resp = client.post(
+            "/file/write",
+            json={"path": "espn_headlines.json", "content": json.dumps({"headlines": headlines}, indent=2)}
+        )
+        assert resp.status_code == 200
+
+        # Clean up
+        client.post("/shell/exec", json={"command": "rm -f espn_headlines.json"})
+        client.post("/browser/close")
+
+    def test_espn_scores_page(self, client):
+        """
+        Navigate to ESPN scores page and extract game information.
+        """
+        client.post("/browser/launch", params={"headless": False})
+
+        # Navigate to scores page
+        resp = client.post(
+            "/browser/navigate",
+            json={"url": "https://www.espn.com/nba/scoreboard", "wait_until": "networkidle"},
+        )
+        assert resp.status_code == 200
+
+        time.sleep(2)
+
+        # Take screenshot
+        resp = client.get("/browser/screenshot")
+        assert resp.status_code == 200
+        img = Image.open(io.BytesIO(resp.content))
+        assert img.width > 0
+
+        # Try to find score-related elements
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    (() => {
+                        // Look for scoreboard elements
+                        const scoreElements = document.querySelectorAll(
+                            '[class*="score"], [class*="Score"], [class*="game"], [class*="Game"]'
+                        );
+                        return {
+                            scoreElementCount: scoreElements.length,
+                            pageHasScores: document.body.innerText.includes('vs') ||
+                                          document.body.innerText.includes('@') ||
+                                          /\\d+\\s*-\\s*\\d+/.test(document.body.innerText),
+                            bodyTextSample: document.body.innerText.substring(0, 500)
+                        };
+                    })()
+                """
+            }
+        )
+        assert resp.status_code == 200
+        result = resp.json().get("result", {})
+        print(f"\n  Score elements found: {result.get('scoreElementCount', 0)}")
+        print(f"  Page appears to have scores: {result.get('pageHasScores', False)}")
+
+        client.post("/browser/close")
+
+    def test_polymarket_homepage_loads(self, client):
+        """
+        Verify Polymarket homepage loads and renders properly.
+        Checks for prediction market content.
+        """
+        client.post("/browser/launch", params={"headless": False})
+
+        # Navigate to Polymarket
+        resp = client.post(
+            "/browser/navigate",
+            json={"url": "https://polymarket.com", "wait_until": "networkidle"},
+        )
+        assert resp.status_code == 200
+        assert "polymarket" in resp.json()["url"].lower()
+
+        # Wait for dynamic content to load
+        time.sleep(3)
+
+        # Take screenshot
+        resp = client.get("/browser/screenshot")
+        assert resp.status_code == 200
+        img = Image.open(io.BytesIO(resp.content))
+        assert img.width >= 1024
+
+        # Verify page title
+        resp = client.post("/browser/evaluate", json={"script": "document.title"})
+        assert resp.status_code == 200
+        title = resp.json().get("result", "")
+        print(f"\n  Polymarket page title: {title}")
+
+        # Check for market-related content
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    (() => {
+                        const bodyText = document.body.innerText.toLowerCase();
+                        return {
+                            hasPercentages: /%/.test(document.body.innerText),
+                            hasYesNo: bodyText.includes('yes') || bodyText.includes('no'),
+                            textLength: document.body.innerText.length,
+                            title: document.title
+                        };
+                    })()
+                """
+            }
+        )
+        assert resp.status_code == 200
+        result = resp.json().get("result", {})
+        assert result.get("textLength", 0) > 500, "Page should have substantial content"
+        print(f"  Has percentages: {result.get('hasPercentages')}")
+        print(f"  Has Yes/No options: {result.get('hasYesNo')}")
+
+        client.post("/browser/close")
+
+    def test_polymarket_extract_markets(self, client):
+        """
+        Extract prediction market data from Polymarket.
+        Demonstrates scraping dynamic JavaScript-rendered content.
+        """
+        client.post("/browser/launch", params={"headless": False})
+
+        resp = client.post(
+            "/browser/navigate",
+            json={"url": "https://polymarket.com", "wait_until": "networkidle"},
+        )
+        assert resp.status_code == 200
+
+        # Wait for React/JS content to render
+        time.sleep(4)
+
+        # Extract market data - look for common patterns
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    (() => {
+                        // Try to find market cards/items
+                        const markets = [];
+
+                        // Look for elements with percentage text (common in prediction markets)
+                        const elements = document.querySelectorAll('*');
+                        const percentageRegex = /\\d{1,3}(\\.\\d)?%/;
+
+                        elements.forEach(el => {
+                            const text = el.textContent.trim();
+                            // Look for market-like content
+                            if (text.length > 20 && text.length < 500 && percentageRegex.test(text)) {
+                                // Check if this looks like a market title
+                                const lines = text.split('\\n').filter(l => l.trim().length > 0);
+                                if (lines.length >= 2) {
+                                    const title = lines[0].trim();
+                                    const percentMatch = text.match(/\\d{1,3}(\\.\\d)?%/);
+                                    if (title.length > 15 && title.length < 200 && percentMatch) {
+                                        markets.push({
+                                            title: title.substring(0, 150),
+                                            percentage: percentMatch[0]
+                                        });
+                                    }
+                                }
+                            }
+                        });
+
+                        // Deduplicate by title
+                        const seen = new Set();
+                        return markets.filter(m => {
+                            if (seen.has(m.title)) return false;
+                            seen.add(m.title);
+                            return true;
+                        }).slice(0, 10);
+                    })()
+                """
+            }
+        )
+        assert resp.status_code == 200
+        markets = resp.json().get("result", [])
+        print(f"\n  Found {len(markets)} potential markets")
+        for m in markets[:5]:
+            print(f"    - {m.get('title', 'N/A')[:60]}... ({m.get('percentage', 'N/A')})")
+
+        # Even if we don't find structured markets, verify the page rendered
+        resp = client.post(
+            "/browser/evaluate",
+            json={"script": "document.body.innerText.length"}
+        )
+        text_length = resp.json().get("result", 0)
+        assert text_length > 1000, f"Page should render content, got {text_length} chars"
+
+        client.post("/browser/close")
+
+    def test_hacker_news_scraping(self, client):
+        """
+        Scrape Hacker News as a simpler, more reliable test case.
+        HN has clean HTML structure that's easy to parse.
+        """
+        client.post("/browser/launch", params={"headless": False})
+
+        resp = client.post(
+            "/browser/navigate",
+            json={"url": "https://news.ycombinator.com", "wait_until": "load"},
+        )
+        assert resp.status_code == 200
+
+        time.sleep(1)
+
+        # Take screenshot
+        resp = client.get("/browser/screenshot")
+        assert resp.status_code == 200
+        img = Image.open(io.BytesIO(resp.content))
+        assert img.width > 0
+
+        # Extract stories from HN (known structure)
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    Array.from(document.querySelectorAll('.titleline > a')).slice(0, 10).map(a => ({
+                        title: a.textContent,
+                        url: a.href
+                    }))
+                """
+            }
+        )
+        assert resp.status_code == 200
+        stories = resp.json().get("result", [])
+        assert len(stories) > 0, "Should extract at least one story from HN"
+        print(f"\n  Found {len(stories)} stories from Hacker News:")
+        for s in stories[:5]:
+            print(f"    - {s.get('title', 'N/A')[:70]}...")
+
+        # Extract points/scores
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    Array.from(document.querySelectorAll('.score')).slice(0, 10).map(el => el.textContent)
+                """
+            }
+        )
+        scores = resp.json().get("result", [])
+        print(f"  Top scores: {scores[:5]}")
+
+        client.post("/browser/close")
+
+    def test_wikipedia_article_extraction(self, client):
+        """
+        Extract structured data from a Wikipedia article.
+        Tests rendering of text-heavy pages with images.
+        """
+        client.post("/browser/launch", params={"headless": False})
+
+        resp = client.post(
+            "/browser/navigate",
+            json={"url": "https://en.wikipedia.org/wiki/Machine_learning", "wait_until": "load"},
+        )
+        assert resp.status_code == 200
+
+        time.sleep(2)
+
+        # Take screenshot
+        resp = client.get("/browser/screenshot")
+        assert resp.status_code == 200
+        img = Image.open(io.BytesIO(resp.content))
+        assert img.width >= 1024
+
+        # Extract article title
+        resp = client.post(
+            "/browser/evaluate",
+            json={"script": "document.querySelector('#firstHeading')?.textContent || document.title"}
+        )
+        assert resp.status_code == 200
+        title = resp.json().get("result", "")
+        assert "Machine learning" in title or "machine learning" in title.lower()
+        print(f"\n  Wikipedia article: {title}")
+
+        # Extract table of contents
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    Array.from(document.querySelectorAll('.toc a, #toc a')).slice(0, 15).map(a => a.textContent.trim())
+                """
+            }
+        )
+        toc = resp.json().get("result", [])
+        if len(toc) > 0:
+            print(f"  Table of contents ({len(toc)} sections):")
+            for section in toc[:5]:
+                print(f"    - {section}")
+
+        # Extract first paragraph
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    document.querySelector('.mw-parser-output > p:not(.mw-empty-elt)')?.textContent?.substring(0, 300) || ''
+                """
+            }
+        )
+        intro = resp.json().get("result", "")
+        if intro:
+            print(f"  Introduction: {intro[:200]}...")
+
+        client.post("/browser/close")
+
+    def test_github_repo_page(self, client):
+        """
+        Test loading a GitHub repository page.
+        Verifies rendering of code-focused UI.
+        """
+        client.post("/browser/launch", params={"headless": False})
+
+        resp = client.post(
+            "/browser/navigate",
+            json={"url": "https://github.com/python/cpython", "wait_until": "networkidle"},
+        )
+        assert resp.status_code == 200
+
+        time.sleep(2)
+
+        # Take screenshot
+        resp = client.get("/browser/screenshot")
+        assert resp.status_code == 200
+        img = Image.open(io.BytesIO(resp.content))
+        assert img.width >= 1024
+
+        # Extract repo info
+        resp = client.post(
+            "/browser/evaluate",
+            json={
+                "script": """
+                    (() => {
+                        return {
+                            title: document.title,
+                            description: document.querySelector('[itemprop="about"], .f4.my-3')?.textContent?.trim() || '',
+                            stars: document.querySelector('#repo-stars-counter-star')?.textContent?.trim() ||
+                                   document.querySelector('[href$="/stargazers"]')?.textContent?.trim() || '',
+                            language: document.querySelector('[itemprop="programmingLanguage"]')?.textContent?.trim() || ''
+                        };
+                    })()
+                """
+            }
+        )
+        assert resp.status_code == 200
+        repo_info = resp.json().get("result", {})
+        print(f"\n  GitHub repo: {repo_info.get('title', 'N/A')}")
+        print(f"  Description: {repo_info.get('description', 'N/A')[:100]}")
+        print(f"  Stars: {repo_info.get('stars', 'N/A')}")
+        print(f"  Language: {repo_info.get('language', 'N/A')}")
+
+        client.post("/browser/close")
 
 
 # ============================================================================
