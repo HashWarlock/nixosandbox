@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use crate::state::AppState;
 use axum::{extract::State, Json};
 use serde::Serialize;
-use crate::state::AppState;
+use std::sync::Arc;
 
 #[derive(Serialize)]
 pub struct HealthResponse {

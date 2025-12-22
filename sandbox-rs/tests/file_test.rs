@@ -6,7 +6,12 @@ use tokio::time::sleep;
 async fn wait_for_server(base_url: &str) {
     let client = Client::new();
     for _ in 0..50 {
-        if client.get(format!("{}/health", base_url)).send().await.is_ok() {
+        if client
+            .get(format!("{}/health", base_url))
+            .send()
+            .await
+            .is_ok()
+        {
             return;
         }
         sleep(Duration::from_millis(100)).await;
@@ -16,8 +21,8 @@ async fn wait_for_server(base_url: &str) {
 
 #[tokio::test]
 async fn test_file_write_and_read() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -51,8 +56,8 @@ async fn test_file_write_and_read() {
 
 #[tokio::test]
 async fn test_file_list() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -73,8 +78,8 @@ async fn test_file_list() {
 
 #[tokio::test]
 async fn test_file_not_found() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -90,8 +95,8 @@ async fn test_file_not_found() {
 
 #[tokio::test]
 async fn test_file_download() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -110,7 +115,10 @@ async fn test_file_download() {
 
     // Download it
     let resp = client
-        .get(format!("{}/file/download?path=/tmp/download_test.txt", base_url))
+        .get(format!(
+            "{}/file/download?path=/tmp/download_test.txt",
+            base_url
+        ))
         .send()
         .await
         .expect("Failed to send request");

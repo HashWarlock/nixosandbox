@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::time::Instant;
 use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Instant;
 use tokio::fs;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
@@ -17,12 +17,30 @@ struct LangConfig {
 
 fn get_lang_config(language: &str) -> Option<LangConfig> {
     match language.to_lowercase().as_str() {
-        "python" => Some(LangConfig { ext: ".py", cmd: "python3" }),
-        "javascript" => Some(LangConfig { ext: ".js", cmd: "node" }),
-        "typescript" => Some(LangConfig { ext: ".ts", cmd: "npx tsx" }),
-        "go" => Some(LangConfig { ext: ".go", cmd: "go run" }),
-        "rust" => Some(LangConfig { ext: ".rs", cmd: "rustc -o /tmp/rust_out && /tmp/rust_out" }),
-        "bash" => Some(LangConfig { ext: ".sh", cmd: "bash" }),
+        "python" => Some(LangConfig {
+            ext: ".py",
+            cmd: "python3",
+        }),
+        "javascript" => Some(LangConfig {
+            ext: ".js",
+            cmd: "node",
+        }),
+        "typescript" => Some(LangConfig {
+            ext: ".ts",
+            cmd: "npx tsx",
+        }),
+        "go" => Some(LangConfig {
+            ext: ".go",
+            cmd: "go run",
+        }),
+        "rust" => Some(LangConfig {
+            ext: ".rs",
+            cmd: "rustc -o /tmp/rust_out && /tmp/rust_out",
+        }),
+        "bash" => Some(LangConfig {
+            ext: ".sh",
+            cmd: "bash",
+        }),
         _ => None,
     }
 }
@@ -65,8 +83,11 @@ pub async fn execute_code(
     // Build command
     let full_cmd = if config.cmd.contains("&&") {
         // Rust special case: compile and run
-        config.cmd.replace("/tmp/rust_out", &format!("/tmp/rust_out_{}", std::process::id()))
-            + " " + &tmp_path
+        config.cmd.replace(
+            "/tmp/rust_out",
+            &format!("/tmp/rust_out_{}", std::process::id()),
+        ) + " "
+            + &tmp_path
     } else {
         format!("{} {}", config.cmd, tmp_path)
     };

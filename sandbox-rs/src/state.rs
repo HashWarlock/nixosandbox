@@ -1,6 +1,6 @@
+use crate::config::Config;
 use std::sync::Arc;
 use std::time::Instant;
-use crate::config::Config;
 
 #[derive(Clone)]
 pub struct AppState {

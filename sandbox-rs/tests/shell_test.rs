@@ -6,7 +6,12 @@ use tokio::time::sleep;
 async fn wait_for_server(base_url: &str) {
     let client = Client::new();
     for _ in 0..50 {
-        if client.get(format!("{}/health", base_url)).send().await.is_ok() {
+        if client
+            .get(format!("{}/health", base_url))
+            .send()
+            .await
+            .is_ok()
+        {
             return;
         }
         sleep(Duration::from_millis(100)).await;
@@ -16,8 +21,8 @@ async fn wait_for_server(base_url: &str) {
 
 #[tokio::test]
 async fn test_shell_exec_simple() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -40,8 +45,8 @@ async fn test_shell_exec_simple() {
 
 #[tokio::test]
 async fn test_shell_exec_with_env() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -64,8 +69,8 @@ async fn test_shell_exec_with_env() {
 
 #[tokio::test]
 async fn test_shell_exec_stderr() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -87,8 +92,8 @@ async fn test_shell_exec_stderr() {
 
 #[tokio::test]
 async fn test_shell_exec_nonzero_exit() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 

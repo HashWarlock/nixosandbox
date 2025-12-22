@@ -2,6 +2,7 @@ use std::env;
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    #[allow(dead_code)]
     pub host: String,
     pub port: u16,
     pub workspace: String,
@@ -17,8 +18,7 @@ impl Config {
                 .ok()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(8080),
-            workspace: env::var("WORKSPACE")
-                .unwrap_or_else(|_| "/home/sandbox/workspace".into()),
+            workspace: env::var("WORKSPACE").unwrap_or_else(|_| "/home/sandbox/workspace".into()),
             display: env::var("DISPLAY").unwrap_or_else(|_| ":99".into()),
             cdp_port: env::var("CDP_PORT")
                 .ok()

@@ -1,12 +1,12 @@
+use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::{extract::State, Json};
+use futures::stream::Stream;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Instant;
-use axum::{extract::State, Json};
-use axum::response::sse::{Event, KeepAlive, Sse};
-use futures::stream::Stream;
-use std::convert::Infallible;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
@@ -88,7 +88,7 @@ pub async fn stream_command(
         match cmd.spawn() {
             Ok(mut child) => {
                 let stdout = child.stdout.take();
-                let stderr = child.stderr.take();
+                let _stderr = child.stderr.take();
 
                 if let Some(stdout) = stdout {
                     let mut reader = BufReader::new(stdout).lines();

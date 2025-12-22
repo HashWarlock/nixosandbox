@@ -3,24 +3,28 @@ mod error;
 mod handlers;
 mod state;
 
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use std::net::SocketAddr;
-use axum::{Router, routing::{get, post}};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::Config;
-use state::AppState;
 use handlers::{
-    health_check, sandbox_info,
-    exec_command, stream_command, execute_code,
-    read_file, write_file, list_files, upload_file, download_file,
+    download_file, exec_command, execute_code, health_check, list_files, read_file, sandbox_info,
+    stream_command, upload_file, write_file,
 };
+use state::AppState;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "sandbox_api=debug,tower_http=debug".into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "sandbox_api=debug,tower_http=debug".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 

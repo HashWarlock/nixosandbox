@@ -6,7 +6,12 @@ use tokio::time::sleep;
 async fn wait_for_server(base_url: &str) {
     let client = Client::new();
     for _ in 0..50 {
-        if client.get(format!("{}/health", base_url)).send().await.is_ok() {
+        if client
+            .get(format!("{}/health", base_url))
+            .send()
+            .await
+            .is_ok()
+        {
             return;
         }
         sleep(Duration::from_millis(100)).await;
@@ -16,8 +21,8 @@ async fn wait_for_server(base_url: &str) {
 
 #[tokio::test]
 async fn test_code_python() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -41,8 +46,8 @@ async fn test_code_python() {
 
 #[tokio::test]
 async fn test_code_bash() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 
@@ -65,8 +70,8 @@ async fn test_code_bash() {
 
 #[tokio::test]
 async fn test_code_unsupported_language() {
-    let base_url = std::env::var("TEST_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8080".into());
+    let base_url =
+        std::env::var("TEST_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
     wait_for_server(&base_url).await;
 

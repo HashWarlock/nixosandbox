@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-use std::sync::Arc;
 use axum::{
     extract::{Multipart, Query, State},
     http::{header, StatusCode},
@@ -7,6 +5,8 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 
@@ -26,6 +26,7 @@ fn resolve_path(base: &str, path: &str) -> PathBuf {
 pub struct FileReadQuery {
     pub path: String,
     #[serde(default = "default_encoding")]
+    #[allow(dead_code)]
     pub encoding: String,
 }
 
@@ -163,7 +164,11 @@ pub async fn list_files(
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        while let Some(entry) = dir.next_entry().await.map_err(|e| AppError::Internal(e.to_string()))? {
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+        {
             if let Some(file_entry) = entry_to_file_entry(&entry).await {
                 entries.push(file_entry);
             }
@@ -181,7 +186,11 @@ async fn collect_entries_recursive(path: &PathBuf, entries: &mut Vec<FileEntry>)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    while let Some(entry) = dir.next_entry().await.map_err(|e| AppError::Internal(e.to_string()))? {
+    while let Some(entry) = dir
+        .next_entry()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
         if let Some(file_entry) = entry_to_file_entry(&entry).await {
             let is_dir = file_entry.file_type == "directory";
             entries.push(file_entry);
@@ -203,7 +212,12 @@ async fn entry_to_file_entry(entry: &fs::DirEntry) -> Option<FileEntry> {
     Some(FileEntry {
         name: entry.file_name().to_string_lossy().into_owned(),
         path: entry.path().to_string_lossy().into_owned(),
-        file_type: if metadata.is_dir() { "directory" } else { "file" }.into(),
+        file_type: if metadata.is_dir() {
+            "directory"
+        } else {
+            "file"
+        }
+        .into(),
         size: metadata.len(),
         modified: datetime.to_rfc3339(),
     })
@@ -217,15 +231,30 @@ pub async fn upload_file(
     let mut file_data: Option<Vec<u8>> = None;
     let mut file_path: Option<String> = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::BadRequest(e.to_string()))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?
+    {
         let name = field.name().unwrap_or("").to_string();
 
         match name.as_str() {
             "file" => {
-                file_data = Some(field.bytes().await.map_err(|e| AppError::Internal(e.to_string()))?.to_vec());
+                file_data = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| AppError::Internal(e.to_string()))?
+                        .to_vec(),
+                );
             }
             "path" => {
-                file_path = Some(field.text().await.map_err(|e| AppError::Internal(e.to_string()))?);
+                file_path = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| AppError::Internal(e.to_string()))?,
+                );
             }
             _ => {}
         }
@@ -277,7 +306,8 @@ pub async fn download_file(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let filename = full_path.file_name()
+    let filename = full_path
+        .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "download".into());
 
@@ -285,8 +315,12 @@ pub async fn download_file(
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, "application/octet-stream"),
-            (header::CONTENT_DISPOSITION, &format!("attachment; filename=\"{}\"", filename)),
+            (
+                header::CONTENT_DISPOSITION,
+                &format!("attachment; filename=\"{}\"", filename),
+            ),
         ],
         contents,
-    ).into_response())
+    )
+        .into_response())
 }
