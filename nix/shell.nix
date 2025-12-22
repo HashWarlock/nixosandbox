@@ -105,6 +105,8 @@ in pkgs.mkShell {
     cargo
     gcc
     gnumake
+    pkg-config
+    openssl
     
     # Shell utilities
     bash
@@ -125,6 +127,12 @@ in pkgs.mkShell {
     export HOME=/home/sandbox
     export WORKSPACE=$HOME/workspace
     export PATH=$WORKSPACE/node_modules/.bin:$PATH
+
+    # Setup OpenSSL for Rust builds
+    export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export OPENSSL_DIR="${pkgs.openssl.dev}"
+    export OPENSSL_LIB_DIR="${pkgs.openssl.out}/lib"
+    export OPENSSL_INCLUDE_DIR="${pkgs.openssl.dev}/include"
 
     # Set up library paths for Playwright browsers
     export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [
@@ -153,6 +161,7 @@ in pkgs.mkShell {
       pkgs.gdk-pixbuf
       pkgs.gtk3
       pkgs.libGL
+      pkgs.openssl
     ]}:$LD_LIBRARY_PATH
 
     # Create directories

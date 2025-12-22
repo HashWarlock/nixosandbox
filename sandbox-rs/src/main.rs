@@ -10,7 +10,11 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::Config;
 use state::AppState;
-use handlers::{health_check, sandbox_info, exec_command, execute_code};
+use handlers::{
+    health_check, sandbox_info,
+    exec_command, execute_code,
+    read_file, write_file, list_files, upload_file, download_file,
+};
 
 #[tokio::main]
 async fn main() {
@@ -25,10 +29,19 @@ async fn main() {
     let state = AppState::new(config);
 
     let app = Router::new()
+        // Health
         .route("/health", get(health_check))
         .route("/sandbox/info", get(sandbox_info))
+        // Shell
         .route("/shell/exec", post(exec_command))
+        // Code
         .route("/code/execute", post(execute_code))
+        // Files
+        .route("/file/read", get(read_file))
+        .route("/file/write", post(write_file))
+        .route("/file/list", get(list_files))
+        .route("/file/upload", post(upload_file))
+        .route("/file/download", get(download_file))
         .with_state(state)
         .layer(TraceLayer::new_for_http());
 
