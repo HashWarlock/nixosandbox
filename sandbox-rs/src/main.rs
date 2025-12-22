@@ -10,7 +10,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::Config;
 use state::AppState;
-use handlers::{health_check, sandbox_info, exec_command};
+use handlers::{health_check, sandbox_info, exec_command, execute_code};
 
 #[tokio::main]
 async fn main() {
@@ -28,6 +28,7 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/sandbox/info", get(sandbox_info))
         .route("/shell/exec", post(exec_command))
+        .route("/code/execute", post(execute_code))
         .with_state(state)
         .layer(TraceLayer::new_for_http());
 
