@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use axum::{extract::State, Json};
+use axum::response::sse::{Event, KeepAlive, Sse};
+use futures::stream::Stream;
+use std::convert::Infallible;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
@@ -58,4 +62,56 @@ pub async fn exec_command(
         exit_code: output.status.code().unwrap_or(-1),
         duration_ms: start.elapsed().as_secs_f64() * 1000.0,
     }))
+}
+
+pub async fn stream_command(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ShellExecRequest>,
+) -> Sse<impl Stream<Item = std::result::Result<Event, Infallible>>> {
+    let cwd = req.cwd.unwrap_or_else(|| state.config.workspace.clone());
+
+    let stream = async_stream::stream! {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg(&req.command)
+            .current_dir(&cwd)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        // Merge environment
+        if let Some(env) = &req.env {
+            for (key, value) in env {
+                cmd.env(key, value);
+            }
+        }
+
+        match cmd.spawn() {
+            Ok(mut child) => {
+                let stdout = child.stdout.take();
+                let stderr = child.stderr.take();
+
+                if let Some(stdout) = stdout {
+                    let mut reader = BufReader::new(stdout).lines();
+                    while let Ok(Some(line)) = reader.next_line().await {
+                        yield Ok(Event::default().data(line));
+                    }
+                }
+
+                match child.wait().await {
+                    Ok(status) => {
+                        let code = status.code().unwrap_or(-1);
+                        yield Ok(Event::default().data(format!("[exit_code:{}]", code)));
+                    }
+                    Err(e) => {
+                        yield Ok(Event::default().data(format!("[error:{}]", e)));
+                    }
+                }
+            }
+            Err(e) => {
+                yield Ok(Event::default().data(format!("[error:{}]", e)));
+            }
+        }
+    };
+
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }

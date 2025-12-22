@@ -12,7 +12,7 @@ use config::Config;
 use state::AppState;
 use handlers::{
     health_check, sandbox_info,
-    exec_command, execute_code,
+    exec_command, stream_command, execute_code,
     read_file, write_file, list_files, upload_file, download_file,
 };
 
@@ -34,6 +34,7 @@ async fn main() {
         .route("/sandbox/info", get(sandbox_info))
         // Shell
         .route("/shell/exec", post(exec_command))
+        .route("/shell/stream", post(stream_command))
         // Code
         .route("/code/execute", post(execute_code))
         // Files
