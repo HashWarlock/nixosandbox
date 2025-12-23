@@ -27,10 +27,11 @@ regex = "1"
 
 # TEE (optional)
 dstack-sdk = { git = "https://github.com/Dstack-TEE/dstack", optional = true }
+hex = { version = "0.4", optional = true }
 
 [features]
 default = []
-tee = ["dstack-sdk"]
+tee = ["dstack-sdk", "hex"]
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }

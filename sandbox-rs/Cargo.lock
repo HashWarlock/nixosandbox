@@ -3107,6 +3107,7 @@ dependencies = [
  "dashmap",
  "dstack-sdk",
  "futures",
+ "hex",
  "hostname",
  "regex",
  "reqwest",

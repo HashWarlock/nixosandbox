@@ -1,15 +1,17 @@
 use dstack_sdk::dstack_client::{
     DstackClient, GetKeyResponse, GetQuoteResponse, InfoResponse, SignResponse, VerifyResponse,
 };
+use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct TeeService {
-    client: DstackClient,
+    client: Arc<DstackClient>,
 }
 
 impl TeeService {
     pub fn new(endpoint: Option<&str>) -> Self {
         Self {
-            client: DstackClient::new(endpoint),
+            client: Arc::new(DstackClient::new(endpoint)),
         }
     }
 
