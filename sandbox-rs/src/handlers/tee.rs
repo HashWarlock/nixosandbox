@@ -1,4 +1,3 @@
-#[cfg(feature = "tee")]
 use axum::{extract::State, Json};
 use dstack_sdk::dstack_client::{
     GetKeyResponse, GetQuoteResponse, InfoResponse, SignResponse, VerifyResponse,

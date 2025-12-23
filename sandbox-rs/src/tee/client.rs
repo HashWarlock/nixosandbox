@@ -20,6 +20,7 @@ impl TeeService {
     }
 
     pub async fn get_quote(&self, report_data: &[u8]) -> anyhow::Result<GetQuoteResponse> {
+        // DstackClient.get_quote() requires Vec<u8> as it consumes the data for hex encoding
         self.client.get_quote(report_data.to_vec()).await
     }
 
@@ -31,10 +32,12 @@ impl TeeService {
     }
 
     pub async fn sign(&self, algorithm: &str, data: &[u8]) -> anyhow::Result<SignResponse> {
+        // DstackClient.sign() requires Vec<u8> as it consumes the data for hex encoding
         self.client.sign(algorithm, data.to_vec()).await
     }
 
     pub async fn verify(&self, algorithm: &str, data: &[u8], signature: &[u8], public_key: &[u8]) -> anyhow::Result<VerifyResponse> {
+        // DstackClient.verify() requires Vec<u8> for all byte parameters as it consumes them for hex encoding
         self.client.verify(
             algorithm,
             data.to_vec(),
@@ -44,6 +47,7 @@ impl TeeService {
     }
 
     pub async fn emit_event(&self, event: &str, payload: &str) -> anyhow::Result<()> {
+        // DstackClient.emit_event() requires Vec<u8> payload as it consumes it for hex encoding
         self.client.emit_event(
             event.to_string(),
             payload.as_bytes().to_vec()
