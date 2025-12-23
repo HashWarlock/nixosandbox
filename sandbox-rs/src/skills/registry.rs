@@ -30,6 +30,17 @@ pub struct SkillRegistry {
     skills_dir: PathBuf,
 }
 
+/// Validate that a filename doesn't contain path traversal sequences
+fn validate_filename(filename: &str) -> Result<()> {
+    if filename.is_empty() {
+        return Err(AppError::BadRequest("Filename cannot be empty".into()));
+    }
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Err(AppError::BadRequest("Invalid filename: path traversal not allowed".into()));
+    }
+    Ok(())
+}
+
 impl SkillRegistry {
     /// Create a new skill registry
     pub fn new(skills_dir: PathBuf) -> Self {
@@ -147,18 +158,21 @@ impl SkillRegistry {
 
         // Write scripts
         for (filename, content) in &req.scripts {
+            validate_filename(filename)?;
             let script_path = skill_dir.join("scripts").join(filename);
             fs::write(script_path, content).await?;
         }
 
         // Write references
         for (filename, content) in &req.references {
+            validate_filename(filename)?;
             let ref_path = skill_dir.join("references").join(filename);
             fs::write(ref_path, content).await?;
         }
 
         // Write assets
         for (filename, content) in &req.assets {
+            validate_filename(filename)?;
             let asset_path = skill_dir.join("assets").join(filename);
             fs::write(asset_path, content).await?;
         }
@@ -199,6 +213,7 @@ impl SkillRegistry {
             fs::create_dir_all(&scripts_dir).await?;
             // Write new scripts
             for (filename, content) in scripts {
+                validate_filename(filename)?;
                 let script_path = scripts_dir.join(filename);
                 fs::write(script_path, content).await?;
             }
@@ -214,6 +229,7 @@ impl SkillRegistry {
             fs::create_dir_all(&references_dir).await?;
             // Write new references
             for (filename, content) in references {
+                validate_filename(filename)?;
                 let ref_path = references_dir.join(filename);
                 fs::write(ref_path, content).await?;
             }
@@ -229,6 +245,7 @@ impl SkillRegistry {
             fs::create_dir_all(&assets_dir).await?;
             // Write new assets
             for (filename, content) in assets {
+                validate_filename(filename)?;
                 let asset_path = assets_dir.join(filename);
                 fs::write(asset_path, content).await?;
             }
