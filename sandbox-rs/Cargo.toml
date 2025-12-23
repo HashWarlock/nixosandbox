@@ -28,9 +28,10 @@ regex = "1"
 # Browser automation
 chromiumoxide = { version = "0.7", features = ["tokio-runtime"] }
 base64 = "0.22"
-# Pins to avoid edition2024 requirement (home 0.5.12 requires Rust 1.85+)
-home = "=0.5.9"
-which = "=5.0.0"
+# Pins to maintain compatibility with nixos-24.11 (Rust 1.77)
+home = "=0.5.9"       # 0.5.12 requires edition2024
+which = "=5.0.0"      # 6.x pulls home 0.5.12
+url = "=2.5.0"        # 2.5.1+ pulls idna 1.x with icu_* requiring Rust 1.82+
 
 # TEE (optional)
 dstack-sdk = { git = "https://github.com/Dstack-TEE/dstack", optional = true }
