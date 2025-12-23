@@ -303,9 +303,12 @@ async fn test_search_skills() {
         .await
         .expect("Failed to create skill");
 
-    // Search for "rust" combined with unique marker
+    // Search for "Rust development" - should match only the rust skill
     let search_resp = client
-        .get(format!("{}/skills/search?q=Rust {}", base_url, unique_marker))
+        .get(format!(
+            "{}/skills/search?q=Rust development {}",
+            base_url, unique_marker
+        ))
         .send()
         .await
         .expect("Failed to send request");
@@ -318,9 +321,12 @@ async fn test_search_skills() {
     assert_eq!(skills.len(), 1);
     assert_eq!(skills[0]["name"], rust_skill);
 
-    // Search for "automation" combined with unique marker
+    // Search for "Python automation" - should match only the python skill
     let search_resp = client
-        .get(format!("{}/skills/search?q=automation {}", base_url, unique_marker))
+        .get(format!(
+            "{}/skills/search?q=Python automation {}",
+            base_url, unique_marker
+        ))
         .send()
         .await
         .expect("Failed to send request");

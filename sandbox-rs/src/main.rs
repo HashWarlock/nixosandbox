@@ -62,10 +62,10 @@ async fn main() {
         .route("/skills", get(list_skills).post(create_skill))
         .route("/skills/search", get(search_skills))
         .route(
-            "/skills/:name",
+            "/skills/{name}",
             get(get_skill).put(update_skill).delete(delete_skill),
         )
-        .route("/skills/:name/scripts/:script", post(execute_script))
+        .route("/skills/{name}/scripts/{script}", post(execute_script))
         // Factory routes
         .route("/factory/start", post(start_factory))
         .route("/factory/continue", post(continue_factory))
