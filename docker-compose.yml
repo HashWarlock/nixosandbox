@@ -56,7 +56,7 @@ services:
           echo 'Repository already initialized, skipping clone...';
         fi &&
         cd /app/repo &&
-        nix-channel --add https://nixos.org/channels/nixos-24.11 nixpkgs &&
+        nix-channel --add https://nixos.org/channels/nixos-25.11 nixpkgs &&
         nix-channel --update &&
         nix-shell /app/repo/nix/shell.nix --run '
           cd /app/repo/sandbox-rs &&
