@@ -154,10 +154,54 @@ impl FactorySessions {
                 session.step = session.step.next();
             }
             FactoryStep::Example => {
-                // For simplicity, we'll store the whole example as input
-                // A more sophisticated implementation could parse "input: X, output: Y"
-                session.answers.example_input = Some(input.to_string());
-                session.answers.example_output = Some(input.to_string());
+                // Parse example input/output from various formats:
+                // 1. "input: X -> output: Y" or "input: X output: Y"
+                // 2. "X -> Y" (arrow separator)
+                // 3. Just "X" (no separator, only input)
+
+                let input_lower = input.to_lowercase();
+
+                // Try to find "input:" and "output:" markers
+                if let Some(input_pos) = input_lower.find("input:") {
+                    let after_input = &input[input_pos + 6..];
+
+                    if let Some(output_pos) = input_lower.find("output:") {
+                        // Both markers found
+                        let input_text = if output_pos > input_pos + 6 {
+                            input[input_pos + 6..output_pos].trim()
+                        } else {
+                            after_input.trim()
+                        };
+                        let output_text = input[output_pos + 7..].trim();
+
+                        session.answers.example_input = Some(input_text.to_string());
+                        session.answers.example_output = if !output_text.is_empty() {
+                            Some(output_text.to_string())
+                        } else {
+                            None
+                        };
+                    } else {
+                        // Only input marker
+                        session.answers.example_input = Some(after_input.trim().to_string());
+                        session.answers.example_output = None;
+                    }
+                } else if let Some(arrow_pos) = input.find("->") {
+                    // Try arrow separator
+                    let input_part = input[..arrow_pos].trim();
+                    let output_part = input[arrow_pos + 2..].trim();
+
+                    session.answers.example_input = Some(input_part.to_string());
+                    session.answers.example_output = if !output_part.is_empty() {
+                        Some(output_part.to_string())
+                    } else {
+                        None
+                    };
+                } else {
+                    // No separator found, store whole input as example_input
+                    session.answers.example_input = Some(input.to_string());
+                    session.answers.example_output = None;
+                }
+
                 session.step = session.step.next();
             }
             FactoryStep::Complexity => {
@@ -182,9 +226,8 @@ impl FactorySessions {
                 if normalized == "yes" || normalized == "y" || normalized == "confirm" {
                     session.step = FactoryStep::Done;
                 } else {
-                    // Restart the process
+                    // Reset to Goal step but preserve answers for review/modification
                     session.step = FactoryStep::Goal;
-                    session.answers = FactoryAnswers::default();
                 }
             }
             FactoryStep::Done => {
@@ -335,5 +378,71 @@ mod tests {
         // Should cleanup very old sessions (0 seconds = everything is expired)
         sessions.cleanup_expired(0);
         assert!(sessions.get(&session.id).is_none());
+    }
+
+    #[test]
+    fn test_example_parsing_with_arrow() {
+        let sessions = FactorySessions::new();
+        let session = sessions.start(Some("Test goal".to_string()));
+
+        // Continue to Example step
+        let session = sessions.continue_session(&session.id, "trigger1").unwrap();
+        assert_eq!(session.step, FactoryStep::Example);
+
+        // Test arrow separator
+        let session = sessions.continue_session(&session.id, "User says 'help me' -> I respond with helpful info").unwrap();
+        assert_eq!(session.answers.example_input, Some("User says 'help me'".to_string()));
+        assert_eq!(session.answers.example_output, Some("I respond with helpful info".to_string()));
+    }
+
+    #[test]
+    fn test_example_parsing_with_markers() {
+        let sessions = FactorySessions::new();
+        let session = sessions.start(Some("Test goal".to_string()));
+
+        // Continue to Example step
+        let session = sessions.continue_session(&session.id, "trigger1").unwrap();
+
+        // Test input/output markers
+        let session = sessions.continue_session(&session.id, "input: Deploy app output: Success message").unwrap();
+        assert_eq!(session.answers.example_input, Some("Deploy app".to_string()));
+        assert_eq!(session.answers.example_output, Some("Success message".to_string()));
+    }
+
+    #[test]
+    fn test_example_parsing_no_separator() {
+        let sessions = FactorySessions::new();
+        let session = sessions.start(Some("Test goal".to_string()));
+
+        // Continue to Example step
+        let session = sessions.continue_session(&session.id, "trigger1").unwrap();
+
+        // Test no separator
+        let session = sessions.continue_session(&session.id, "Just an example input").unwrap();
+        assert_eq!(session.answers.example_input, Some("Just an example input".to_string()));
+        assert_eq!(session.answers.example_output, None);
+    }
+
+    #[test]
+    fn test_rejection_preserves_answers() {
+        let sessions = FactorySessions::new();
+        let session = sessions.start(Some("Deploy app".to_string()));
+
+        // Fill in all steps
+        let session = sessions.continue_session(&session.id, "deploy").unwrap();
+        let session = sessions.continue_session(&session.id, "input -> output").unwrap();
+        let session = sessions.continue_session(&session.id, "simple").unwrap();
+        let session = sessions.continue_session(&session.id, "Handle errors").unwrap();
+        assert_eq!(session.step, FactoryStep::Confirm);
+
+        // Reject and verify answers are preserved
+        let session = sessions.continue_session(&session.id, "no").unwrap();
+        assert_eq!(session.step, FactoryStep::Goal);
+        assert_eq!(session.answers.goal, Some("Deploy app".to_string()));
+        assert_eq!(session.answers.triggers, Some(vec!["deploy".to_string()]));
+        assert_eq!(session.answers.example_input, Some("input".to_string()));
+        assert_eq!(session.answers.example_output, Some("output".to_string()));
+        assert_eq!(session.answers.complexity, Some(Complexity::Simple));
+        assert_eq!(session.answers.edge_cases, Some("Handle errors".to_string()));
     }
 }
