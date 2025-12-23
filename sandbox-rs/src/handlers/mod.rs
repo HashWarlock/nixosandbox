@@ -1,3 +1,4 @@
+pub mod browser;
 pub mod code;
 pub mod factory;
 pub mod file;
@@ -8,6 +9,7 @@ pub mod skills;
 #[cfg(feature = "tee")]
 pub mod tee;
 
+pub use browser::*;
 pub use code::*;
 pub use factory::*;
 pub use file::*;

@@ -1,3 +1,4 @@
+mod browser;
 mod config;
 mod error;
 mod handlers;
