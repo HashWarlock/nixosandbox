@@ -18,10 +18,11 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::Config;
 use handlers::{
-    check_trigger, continue_factory, create_skill, delete_skill, download_file, exec_command,
-    execute_code, execute_script, get_skill, health_check, list_files, list_skills, read_file,
-    sandbox_info, search_skills, start_factory, stream_command, update_skill, upload_file,
-    write_file,
+    browser_click, browser_evaluate, browser_goto, browser_screenshot, browser_status,
+    browser_type, check_trigger, continue_factory, create_skill, delete_skill, download_file,
+    exec_command, execute_code, execute_script, get_skill, health_check, list_files, list_skills,
+    read_file, sandbox_info, search_skills, start_factory, stream_command, update_skill,
+    upload_file, write_file,
 };
 
 #[cfg(feature = "tee")]
@@ -70,7 +71,14 @@ async fn main() {
         // Factory routes
         .route("/factory/start", post(start_factory))
         .route("/factory/continue", post(continue_factory))
-        .route("/factory/check", post(check_trigger));
+        .route("/factory/check", post(check_trigger))
+        // Browser routes
+        .route("/browser/goto", post(browser_goto))
+        .route("/browser/screenshot", post(browser_screenshot))
+        .route("/browser/evaluate", post(browser_evaluate))
+        .route("/browser/click", post(browser_click))
+        .route("/browser/type", post(browser_type))
+        .route("/browser/status", get(browser_status));
 
     #[cfg(feature = "tee")]
     let app = app
