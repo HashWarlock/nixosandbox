@@ -25,6 +25,10 @@ dashmap = "6"
 uuid = { version = "1", features = ["v4"] }
 regex = "1"
 
+# Browser automation
+chromiumoxide = { version = "0.7", features = ["tokio-runtime"] }
+base64 = "0.22"
+
 # TEE (optional)
 dstack-sdk = { git = "https://github.com/Dstack-TEE/dstack", optional = true }
 hex = { version = "0.4", optional = true }
