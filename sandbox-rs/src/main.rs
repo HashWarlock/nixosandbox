@@ -14,8 +14,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use config::Config;
 use handlers::{
-    download_file, exec_command, execute_code, health_check, list_files, read_file, sandbox_info,
-    stream_command, upload_file, write_file,
+    check_trigger, continue_factory, create_skill, delete_skill, download_file, exec_command,
+    execute_code, execute_script, get_skill, health_check, list_files, list_skills, read_file,
+    sandbox_info, search_skills, start_factory, stream_command, update_skill, upload_file,
+    write_file,
 };
 use state::AppState;
 
@@ -48,6 +50,18 @@ async fn main() {
         .route("/file/list", get(list_files))
         .route("/file/upload", post(upload_file))
         .route("/file/download", get(download_file))
+        // Skills routes
+        .route("/skills", get(list_skills).post(create_skill))
+        .route("/skills/search", get(search_skills))
+        .route(
+            "/skills/:name",
+            get(get_skill).put(update_skill).delete(delete_skill),
+        )
+        .route("/skills/:name/scripts/:script", post(execute_script))
+        // Factory routes
+        .route("/factory/start", post(start_factory))
+        .route("/factory/continue", post(continue_factory))
+        .route("/factory/check", post(check_trigger))
         .with_state(state)
         .layer(TraceLayer::new_for_http());
 

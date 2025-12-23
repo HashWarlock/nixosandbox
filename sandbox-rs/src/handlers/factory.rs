@@ -1,8 +1,10 @@
-use axum::Json;
+use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::error::{AppError, Result};
-use crate::skills::{check_triggers, FactorySessions, SkillSummary};
+use crate::skills::{check_triggers, SkillSummary};
+use crate::state::AppState;
 
 // POST /factory/start
 #[derive(Deserialize)]
@@ -42,10 +44,10 @@ pub struct CheckTriggerResponse {
 
 /// POST /factory/start - Begin dialogue
 pub async fn start_factory(
-    factory: &FactorySessions,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<StartFactoryRequest>,
 ) -> Result<Json<FactoryResponse>> {
-    let session = factory.start(req.initial_input);
+    let session = state.factory.start(req.initial_input);
 
     Ok(Json(FactoryResponse {
         session_id: session.id,
@@ -58,10 +60,10 @@ pub async fn start_factory(
 
 /// POST /factory/continue - Advance step
 pub async fn continue_factory(
-    factory: &FactorySessions,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<ContinueFactoryRequest>,
 ) -> Result<Json<FactoryResponse>> {
-    let session = factory
+    let session = state.factory
         .continue_session(&req.session_id, &req.input)
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 

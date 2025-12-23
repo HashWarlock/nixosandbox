@@ -111,6 +111,7 @@ impl FactorySession {
     }
 }
 
+#[derive(Clone)]
 pub struct FactorySessions {
     sessions: DashMap<String, FactorySession>,
 }

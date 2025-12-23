@@ -1,15 +1,17 @@
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     Json,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::error::{AppError, Result};
-use crate::skills::{CreateSkillRequest, Skill, SkillRegistry, SkillSummary, UpdateSkillRequest};
+use crate::skills::{CreateSkillRequest, Skill, SkillSummary, UpdateSkillRequest};
+use crate::state::AppState;
 
 // GET /skills - List all skills
 #[derive(Serialize)]
@@ -17,8 +19,8 @@ pub struct ListSkillsResponse {
     pub skills: Vec<SkillSummary>,
 }
 
-pub async fn list_skills(registry: &SkillRegistry) -> Result<Json<ListSkillsResponse>> {
-    let skills = registry.list().await?;
+pub async fn list_skills(State(state): State<Arc<AppState>>) -> Result<Json<ListSkillsResponse>> {
+    let skills = state.skills.list().await?;
     Ok(Json(ListSkillsResponse { skills }))
 }
 
@@ -29,19 +31,19 @@ pub struct SearchQuery {
 }
 
 pub async fn search_skills(
-    registry: &SkillRegistry,
+    State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<ListSkillsResponse>> {
-    let skills = registry.search(&query.q).await?;
+    let skills = state.skills.search(&query.q).await?;
     Ok(Json(ListSkillsResponse { skills }))
 }
 
 // GET /skills/:name - Get a specific skill
 pub async fn get_skill(
-    registry: &SkillRegistry,
+    State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<Json<Skill>> {
-    let skill = registry.get(&name).await?;
+    let skill = state.skills.get(&name).await?;
     Ok(Json(skill))
 }
 
@@ -60,7 +62,7 @@ pub struct CreateSkillRequestJson {
 }
 
 pub async fn create_skill(
-    registry: &SkillRegistry,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<CreateSkillRequestJson>,
 ) -> Result<Json<Skill>> {
     let create_req = CreateSkillRequest {
@@ -72,7 +74,7 @@ pub async fn create_skill(
         assets: req.assets,
     };
 
-    let skill = registry.create(create_req).await?;
+    let skill = state.skills.create(create_req).await?;
     Ok(Json(skill))
 }
 
@@ -87,7 +89,7 @@ pub struct UpdateSkillRequestJson {
 }
 
 pub async fn update_skill(
-    registry: &SkillRegistry,
+    State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Json(req): Json<UpdateSkillRequestJson>,
 ) -> Result<Json<Skill>> {
@@ -99,7 +101,7 @@ pub async fn update_skill(
         assets: req.assets,
     };
 
-    let skill = registry.update(&name, update_req).await?;
+    let skill = state.skills.update(&name, update_req).await?;
     Ok(Json(skill))
 }
 
@@ -111,10 +113,10 @@ pub struct DeleteSkillResponse {
 }
 
 pub async fn delete_skill(
-    registry: &SkillRegistry,
+    State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<Json<DeleteSkillResponse>> {
-    registry.delete(&name).await?;
+    state.skills.delete(&name).await?;
     Ok(Json(DeleteSkillResponse {
         success: true,
         message: format!("Skill '{}' deleted successfully", name),
@@ -138,12 +140,12 @@ pub struct ExecuteScriptResponse {
 }
 
 pub async fn execute_script(
-    registry: &SkillRegistry,
+    State(state): State<Arc<AppState>>,
     Path((skill_name, script_name)): Path<(String, String)>,
     Json(req): Json<ExecuteScriptRequest>,
 ) -> Result<Json<ExecuteScriptResponse>> {
     // Get the skill to verify it exists
-    let skill = registry.get(&skill_name).await?;
+    let skill = state.skills.get(&skill_name).await?;
 
     // Verify the script exists
     if !skill.scripts.contains(&script_name) {
@@ -155,7 +157,7 @@ pub async fn execute_script(
 
     // Build the script path using the registry's internal path
     // The registry knows where skills are stored
-    let skill_dir = registry.skill_dir(&skill_name);
+    let skill_dir = state.skills.skill_dir(&skill_name);
     let scripts_dir = skill_dir.join("scripts");
     let script_path = scripts_dir.join(&script_name);
 

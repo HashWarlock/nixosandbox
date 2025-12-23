@@ -26,6 +26,7 @@ pub struct UpdateSkillRequest {
 }
 
 /// Registry for managing skills in the filesystem
+#[derive(Clone)]
 pub struct SkillRegistry {
     skills_dir: PathBuf,
 }
