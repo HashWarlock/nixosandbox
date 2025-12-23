@@ -28,6 +28,9 @@ regex = "1"
 # Browser automation
 chromiumoxide = { version = "0.7", features = ["tokio-runtime"] }
 base64 = "0.22"
+# Pins to avoid edition2024 requirement (home 0.5.12 requires Rust 1.85+)
+home = "=0.5.9"
+which = "=5.0.0"
 
 # TEE (optional)
 dstack-sdk = { git = "https://github.com/Dstack-TEE/dstack", optional = true }
