@@ -1,6 +1,7 @@
 mod config;
 mod error;
 mod handlers;
+mod skills;
 mod state;
 
 use axum::{
