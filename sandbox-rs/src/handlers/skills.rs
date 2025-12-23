@@ -4,7 +4,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Duration;
 use tokio::process::Command;
+use tokio::time::timeout;
 
 use crate::error::{AppError, Result};
 use crate::skills::{CreateSkillRequest, Skill, SkillRegistry, SkillSummary, UpdateSkillRequest};
@@ -165,15 +167,16 @@ pub async fn execute_script(
     }
 
     // Determine how to execute the script based on its extension
+    let script_path_str = script_path.to_string_lossy().to_string();
     let (command, args) = if script_name.ends_with(".sh") {
-        ("sh", vec![script_path.to_string_lossy().to_string()])
+        ("sh", vec![script_path_str.clone()])
     } else if script_name.ends_with(".py") {
-        ("python3", vec![script_path.to_string_lossy().to_string()])
+        ("python3", vec![script_path_str.clone()])
     } else if script_name.ends_with(".js") {
-        ("node", vec![script_path.to_string_lossy().to_string()])
+        ("node", vec![script_path_str.clone()])
     } else {
         // Default: try to execute directly
-        (script_path.to_str().unwrap(), vec![])
+        (script_path_str.as_str(), vec![])
     };
 
     // Build the command with user-provided args
@@ -193,10 +196,10 @@ pub async fn execute_script(
         cmd.env(key, value);
     }
 
-    // Execute the command
-    let output = cmd
-        .output()
+    // Execute the command with timeout
+    let output = timeout(Duration::from_secs(30), cmd.output())
         .await
+        .map_err(|_| AppError::Timeout("Script execution timed out".into()))?
         .map_err(|e| AppError::Internal(format!("Failed to execute script: {}", e)))?;
 
     Ok(Json(ExecuteScriptResponse {
