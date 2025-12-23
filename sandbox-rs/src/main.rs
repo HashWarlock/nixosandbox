@@ -4,6 +4,9 @@ mod handlers;
 mod skills;
 mod state;
 
+#[cfg(feature = "tee")]
+mod tee;
+
 use axum::{
     routing::{get, post},
     Router,
