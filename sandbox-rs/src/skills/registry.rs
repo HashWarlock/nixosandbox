@@ -58,6 +58,11 @@ impl SkillRegistry {
         self.skills_dir.join(name)
     }
 
+    /// Get the path to a skill directory (public accessor)
+    pub fn skill_dir(&self, name: &str) -> PathBuf {
+        self.skill_path(name)
+    }
+
     /// Get the path to a skill's SKILL.md file
     fn skill_md_path(&self, name: &str) -> PathBuf {
         self.skill_path(name).join("SKILL.md")
