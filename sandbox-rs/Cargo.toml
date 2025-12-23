@@ -19,6 +19,19 @@ chrono = { version = "0.4", features = ["serde"] }
 async-stream = "0.3"
 futures = "0.3"
 
+# New for Skills
+serde_yaml = "0.9"
+dashmap = "6"
+uuid = { version = "1", features = ["v4"] }
+regex = "1"
+
+# TEE (optional)
+dstack-sdk = { git = "https://github.com/Dstack-TEE/dstack", optional = true }
+
+[features]
+default = []
+tee = ["dstack-sdk"]
+
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio-test = "0.4"
