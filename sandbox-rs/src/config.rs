@@ -9,6 +9,11 @@ pub struct Config {
     pub display: String,
     pub cdp_port: u16,
     pub skills_dir: String,
+    pub browser_headless: bool,
+    pub browser_executable: Option<String>,
+    pub browser_viewport_width: u32,
+    pub browser_viewport_height: u32,
+    pub browser_timeout: u64,
 }
 
 impl Config {
@@ -30,6 +35,22 @@ impl Config {
                 .unwrap_or(9222),
             skills_dir: env::var("SKILLS_DIR")
                 .unwrap_or_else(|_| format!("{}/.skills", workspace)),
+            browser_headless: env::var("BROWSER_HEADLESS")
+                .map(|v| v != "false" && v != "0")
+                .unwrap_or(true),
+            browser_executable: env::var("BROWSER_EXECUTABLE").ok(),
+            browser_viewport_width: env::var("BROWSER_VIEWPORT_WIDTH")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(1280),
+            browser_viewport_height: env::var("BROWSER_VIEWPORT_HEIGHT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(720),
+            browser_timeout: env::var("BROWSER_TIMEOUT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(30),
         }
     }
 }

@@ -1,5 +1,6 @@
 use chromiumoxide::{Browser, BrowserConfig};
 use tokio::sync::OnceCell;
+use std::sync::Arc;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use futures::StreamExt;
 
@@ -26,15 +27,16 @@ impl Default for BrowserServiceConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct BrowserService {
-    browser: OnceCell<Browser>,
+    browser: Arc<OnceCell<Browser>>,
     config: BrowserServiceConfig,
 }
 
 impl BrowserService {
     pub fn new(config: BrowserServiceConfig) -> Self {
         Self {
-            browser: OnceCell::new(),
+            browser: Arc::new(OnceCell::new()),
             config,
         }
     }
@@ -169,8 +171,11 @@ impl BrowserService {
                 .map_err(|e| BrowserError::NavigationFailed(e.to_string()))?;
         }
 
-        let result: serde_json::Value = page.evaluate(req.script)
+        let eval_result = page.evaluate(req.script)
             .await
+            .map_err(|e| BrowserError::ScriptError(e.to_string()))?;
+
+        let result = eval_result.into_value()
             .map_err(|e| BrowserError::ScriptError(e.to_string()))?;
 
         page.close().await.ok();
