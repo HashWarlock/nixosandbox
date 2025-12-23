@@ -1,41 +1,23 @@
 { pkgs ? import <nixpkgs> {} }:
 
-let
-  pythonEnv = pkgs.python312.withPackages (ps: with ps; [
-    # API Framework
-    fastapi
-    uvicorn
-    pydantic
-    python-multipart
-    websockets
-    httpx
-    
-    # Browser automation
-    playwright
-    
-    # Terminal/PTY
-    pexpect
-    ptyprocess
-    
-    # Utilities
-    aiofiles
-    psutil
-    pillow
-  ]);
-
-in pkgs.mkShell {
+pkgs.mkShell {
   name = "nixos-sandbox";
 
   buildInputs = with pkgs; [
-    # Core
-    pythonEnv
+    # Rust toolchain (for building sandbox-api)
+    rustc
+    cargo
+    pkg-config
+    openssl
+
+    # Node.js
     nodejs_22
 
     # Browsers
     chromium
     firefox
 
-    # Browser dependencies (for Playwright)
+    # Browser dependencies (for chromiumoxide/Playwright)
     glib
     nss
     nspr
@@ -71,7 +53,7 @@ in pkgs.mkShell {
     xdotool
     scrot
     imagemagick
-    ffmpeg-full     # Screen recording (with x11grab support)
+    ffmpeg-full     # Screen recording
 
     # Network utilities
     inetutils  # Provides hostname command
@@ -96,25 +78,21 @@ in pkgs.mkShell {
     fd
     tree
     tmux
-    
+
     # Languages for code execution
     python312
     nodejs_22
     go
-    rustc
-    cargo
     gcc
     gnumake
-    pkg-config
-    openssl
-    
+
     # Shell utilities
     bash
     zsh
     coreutils
     procps
     util-linux
-    
+
     # File utilities
     file
     unzip
@@ -126,6 +104,7 @@ in pkgs.mkShell {
   shellHook = ''
     export HOME=/home/sandbox
     export WORKSPACE=$HOME/workspace
+    export SKILLS_DIR=$HOME/skills
     export PATH=$WORKSPACE/node_modules/.bin:$PATH
 
     # Setup OpenSSL for Rust builds
@@ -134,7 +113,7 @@ in pkgs.mkShell {
     export OPENSSL_LIB_DIR="${pkgs.openssl.out}/lib"
     export OPENSSL_INCLUDE_DIR="${pkgs.openssl.dev}/include"
 
-    # Set up library paths for Playwright browsers
+    # Set up library paths for browsers
     export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath [
       pkgs.glib
       pkgs.nss
@@ -165,7 +144,7 @@ in pkgs.mkShell {
     ]}:$LD_LIBRARY_PATH
 
     # Create directories
-    mkdir -p $HOME $WORKSPACE /tmp/.X11-unix /tmp/dbus
+    mkdir -p $HOME $WORKSPACE $SKILLS_DIR /tmp/.X11-unix /tmp/dbus
 
     # Setup fontconfig for browser rendering
     export FONTCONFIG_PATH=${pkgs.fontconfig.out}/etc/fonts
@@ -201,25 +180,24 @@ in pkgs.mkShell {
     if [ ! -e /tmp/.X11-unix/X99 ]; then
       echo "WARNING: X11 display not ready after 15s"
     fi
-    
+
     # Start x11vnc
     if ! pgrep -x "x11vnc" > /dev/null; then
       x11vnc -display :99 -forever -shared -rfbport 5900 -bg -nopw
     fi
-    
+
     # Start noVNC
     if ! pgrep -f "novnc" > /dev/null; then
       ${pkgs.novnc}/bin/novnc --listen 6080 --vnc localhost:5900 &
     fi
-    
-    # Use system Chromium instead of Playwright's bundled browser
-    export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${pkgs.chromium}/bin/chromium
-    echo "Using system Chromium: $PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"
-    
+
+    # Set browser executable for chromiumoxide
+    export BROWSER_EXECUTABLE=${pkgs.chromium}/bin/chromium
+    echo "Using system Chromium: $BROWSER_EXECUTABLE"
+
     echo "🚀 NixOS Sandbox Ready"
     echo "   API:    http://localhost:8080"
     echo "   VNC:    vnc://localhost:5900"
     echo "   noVNC:  http://localhost:6080"
-    echo "   CDP:    http://localhost:9222"
   '';
 }

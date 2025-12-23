@@ -23,12 +23,13 @@ services:
       - sandbox-nix:/nix                     # Nix store cache
       - /dev/shm:/dev/shm                    # Shared memory for browser
     environment:
-      - SANDBOX_API_HOST=0.0.0.0
-      - SANDBOX_API_PORT=8080
+      - PORT=8080
       - DISPLAY=:99
       - HOME=/home/sandbox
       - WORKSPACE=/home/sandbox/workspace
-      - BROWSER_HEADLESS=${BROWSER_HEADLESS:-false}
+      - SKILLS_DIR=/home/sandbox/skills
+      - BROWSER_HEADLESS=${BROWSER_HEADLESS:-true}
+      - BROWSER_EXECUTABLE=/nix/var/nix/profiles/default/bin/chromium
       - TZ=${TZ:-UTC}
       - GITHUB_REPO=${GITHUB_REPO:-https://github.com/HashWarlock/nixosandbox.git}
       - GIT_COMMIT_HASH=${GIT_COMMIT_HASH:-HEAD}
@@ -38,7 +39,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
     restart: unless-stopped
     command: >
       sh -c "
@@ -57,7 +58,15 @@ services:
         cd /app/repo &&
         nix-channel --add https://nixos.org/channels/nixos-24.05 nixpkgs &&
         nix-channel --update &&
-        nix-shell /app/repo/nix/shell.nix --run 'python /app/repo/sandbox-api/main.py'
+        nix-shell /app/repo/nix/shell.nix --run '
+          cd /app/repo/sandbox-rs &&
+          if [ ! -f target/release/sandbox-api ] || [ \"$$UPDATE_CODE\" = \"true\" ]; then
+            echo \"Building Rust API...\" &&
+            cargo build --release;
+          fi &&
+          echo \"Starting sandbox API...\" &&
+          ./target/release/sandbox-api
+        '
       "
 
 volumes:
