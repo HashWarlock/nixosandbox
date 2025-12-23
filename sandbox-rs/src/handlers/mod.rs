@@ -15,5 +15,4 @@ pub use health::*;
 pub use shell::*;
 pub use skills::*;
 
-#[cfg(feature = "tee")]
-pub use tee::*;
+// Note: TEE handlers are imported explicitly via handlers::tee::{...} in main.rs
