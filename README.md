@@ -1,334 +1,269 @@
 # NixOS Sandbox for AI Agents
 
-A lightweight, self-hosted sandbox environment for AI agents with browser automation, shell access, code execution, and file operations — all controlled via OpenAPI.
+A lightweight, self-hosted sandbox environment for AI agents with browser automation, shell access, code execution, and file operations — all controlled via REST API.
 
 ## Features
 
-- 🐚 **Shell** — Execute commands, stream output
-- 🐍 **Code Execution** — Python, JavaScript, TypeScript, Go, Rust, Bash
-- 📁 **File System** — Read, write, list, upload, download
-- 🌐 **Browser** — Playwright-based automation with CDP support
-- 🖥️ **Desktop** — VNC access, screenshots, mouse/keyboard control
-- 🔌 **OpenAPI** — Full REST API with auto-generated docs
+- **Shell** — Execute commands with streaming output (SSE)
+- **Code Execution** — Python, JavaScript, TypeScript, Go, Rust, Bash
+- **File System** — Read, write, list, upload, download
+- **Browser** — CDP-based Chromium automation (goto, screenshot, evaluate, click, type)
+- **Skills** — Filesystem-based skill registry with CRUD + search
+- **TEE** — Optional Trusted Execution Environment support (dstack integration)
+
+## Tech Stack
+
+- **Rust** with Axum 0.8 + Tokio async runtime
+- **chromiumoxide** for browser automation via CDP
+- **Nix** for reproducible runtime environments
 
 ## Quick Start
 
-### 1. Clone and setup directory structure
+### 1. Build the Rust API server
 
 ```bash
-mkdir -p nixos-sandbox/{nix,sandbox-api}
-cd nixos-sandbox
-
-# Copy the configuration files:
-# - docker-compose.yml
-# - nix/shell.nix
-# - sandbox-api/main.py
-# - sandbox-api/client.py
+cd sandbox-rs
+cargo build --release
 ```
 
-### 2. Start the sandbox
+### 2. Run the server
 
 ```bash
-docker-compose up -d
+# Default port 8080
+cargo run --release
+
+# Custom port
+PORT=9090 cargo run --release
+
+# With TEE support
+cargo run --release --features tee
 ```
 
-### 3. Access the services
-
-| Service | URL |
-|---------|-----|
-| API Docs | http://localhost:8080/docs |
-| noVNC | http://localhost:6080 |
-| VNC | vnc://localhost:5900 |
-| CDP | http://localhost:9222 |
-
-## Usage
-
-### Python SDK
-
-```python
-from client import SandboxClient
-
-sandbox = SandboxClient("http://localhost:8080")
-
-# Run shell commands
-result = sandbox.shell("ls -la")
-print(result.stdout)
-
-# Execute Python code
-output = sandbox.run_python("""
-import numpy as np
-print(np.random.rand(3, 3))
-""")
-print(output.output)
-
-# Browser automation
-sandbox.browser_launch()
-sandbox.browser_navigate("https://example.com")
-screenshot = sandbox.browser_screenshot()
-sandbox.browser_close()
-
-# File operations
-sandbox.write_file("data.json", '{"key": "value"}')
-content = sandbox.read_file("data.json")
-```
-
-### cURL
+### 3. Verify it's running
 
 ```bash
-# Shell command
-curl -X POST http://localhost:8080/shell/exec \
-  -H "Content-Type: application/json" \
-  -d '{"command": "echo hello"}'
-
-# Execute Python
-curl -X POST https://c7712468c1e19db10e63ab2f030914b19ad3766b-8080.dstack-pha-prod3.phala.network/code/execute \
-  -H "Content-Type: application/json" \
-  -d '{"code": "print(2+2)", "language": "python"}'
-
-# Browser screenshot
-curl https://c7712468c1e19db10e63ab2f030914b19ad3766b-8080.dstack-pha-prod3.phala.network/browser/screenshot --output screenshot.png
-
-# Desktop screenshot
-curl http://localhost:8080/screen/screenshot --output desktop.png
+curl http://localhost:8080/health
+# {"status":"healthy","uptime":1.23,"services":{"display":false,"browser":false}}
 ```
 
 ## API Endpoints
 
-### Shell
-- `POST /shell/exec` — Execute command
-- `POST /shell/stream` — Stream command output (SSE)
+### Health & Info
 
-### Code
-- `POST /code/execute` — Run code (python, javascript, go, rust, bash)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check with uptime and service status |
+| GET | `/sandbox/info` | Sandbox environment info |
+
+### Shell
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/shell/exec` | Execute command, return stdout/stderr |
+| POST | `/shell/stream` | Stream command output via SSE |
+
+### Code Execution
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/code/execute` | Run code (python, javascript, typescript, go, rust, bash) |
 
 ### Files
-- `GET /file/read?path=...` — Read file
-- `POST /file/write` — Write file
-- `GET /file/list?path=...` — List directory
-- `POST /file/upload` — Upload file (multipart)
-- `GET /file/download?path=...` — Download file
 
-### Browser
-- `POST /browser/launch` — Start browser
-- `POST /browser/navigate` — Go to URL
-- `GET /browser/screenshot` — Capture page
-- `POST /browser/click` — Click element/coordinates
-- `POST /browser/type` — Type text
-- `POST /browser/evaluate` — Run JavaScript
-- `POST /browser/close` — Close browser
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/file/read?path=...` | Read file content |
+| POST | `/file/write` | Write file content |
+| GET | `/file/list?path=...` | List directory contents |
+| POST | `/file/upload` | Upload file (multipart) |
+| GET | `/file/download?path=...` | Download file |
 
-### Screen (Desktop)
-- `GET /screen/screenshot` — Capture desktop
-- `POST /screen/mouse` — Mouse actions
-- `POST /screen/keyboard` — Keyboard actions
-- `POST /screen/record/start` — Start screen recording
-- `POST /screen/record/stop` — Stop recording and save
-- `GET /screen/record/status` — Get recording status
-- `GET /screen/record/download` — Download recorded video
+### Browser (chromiumoxide)
 
-## Testing
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/browser/goto` | Navigate to URL, return title |
+| POST | `/browser/screenshot` | Take screenshot, return base64 PNG |
+| POST | `/browser/evaluate` | Execute JavaScript, return result |
+| POST | `/browser/click` | Click element by CSS selector |
+| POST | `/browser/type` | Type text into element |
+| GET | `/browser/status` | Check if browser is running |
 
-A comprehensive test suite is included to validate API functionality and multi-turn task execution.
+### Skills
 
-### Setup
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/skills` | List all skills |
+| POST | `/skills` | Create a new skill |
+| GET | `/skills/search?q=...` | Search skills by name/description |
+| GET | `/skills/{name}` | Get skill by name |
+| PUT | `/skills/{name}` | Update skill |
+| DELETE | `/skills/{name}` | Delete skill |
+| POST | `/skills/{name}/scripts/{script}` | Execute skill script |
 
-```bash
-cd tests
-pip install -r requirements.txt
-```
+### Factory (Skill Creation Dialogue)
 
-### Running Tests
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/factory/start` | Start skill creation session |
+| POST | `/factory/continue` | Continue with user input |
+| POST | `/factory/check` | Check for trigger phrases |
 
-```bash
-# Run all tests
-./tests/run_tests.sh http://localhost:8080
+### TEE (Trusted Execution Environment)
 
-# Or using pytest directly
-pytest tests/test_sandbox_api.py -v --api-url http://localhost:8080
+*Requires `--features tee` build flag*
 
-# Run specific test categories
-pytest tests/ -v --api-url http://localhost:8080 -k "health"      # Health checks
-pytest tests/ -v --api-url http://localhost:8080 -k "shell"       # Shell execution
-pytest tests/ -v --api-url http://localhost:8080 -k "browser"     # Browser automation
-pytest tests/ -v --api-url http://localhost:8080 -k "screen"      # Desktop/screen
-pytest tests/ -v --api-url http://localhost:8080 -k "multi_turn"  # Multi-turn workflows
-pytest tests/ -v --api-url http://localhost:8080 -k "goal"        # Goal-oriented tasks
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/tee/info` | Get TEE environment info |
+| POST | `/tee/quote` | Generate attestation quote |
+| POST | `/tee/derive-key` | Derive key from path |
+| POST | `/tee/sign` | Sign data with TEE key |
+| POST | `/tee/verify` | Verify signature |
+| POST | `/tee/emit-event` | Emit TEE event |
 
-# Verbose output
-pytest tests/ -v -s --api-url http://localhost:8080
-```
+## Usage Examples
 
-### Test Categories
-
-| Category | Description |
-|----------|-------------|
-| `TestHealthAndInfo` | Basic connectivity and status checks |
-| `TestShellExecution` | Shell commands, env vars, pipelines, timeouts |
-| `TestCodeExecution` | Python, bash execution and error handling |
-| `TestFileOperations` | Read, write, list, nested directories |
-| `TestBrowser` | Launch, navigate, screenshot, click, evaluate |
-| `TestScreen` | Desktop screenshot, mouse, keyboard |
-| `TestMultiTurnTasks` | Complex multi-step workflows |
-| `TestStress` | Rapid commands, large files, concurrency |
-| `TestGoalOrientedTasks` | Real-world automation scenarios |
-
-### Multi-Turn Task Examples
-
-The test suite includes realistic multi-turn scenarios:
-
-- **Create and execute scripts** — Write code, run it, verify output
-- **Web form interaction** — Navigate, fill forms, submit
-- **File processing pipeline** — Create files, process, aggregate results
-- **Iterative development** — Write buggy code, test, fix, re-test
-- **Visual testing** — Navigate pages, compare screenshots
-- **Dev environment setup** — Create project structure, run tests
-
-### Screen Recording
-
-Tests can automatically record the sandbox screen during execution for visual verification:
+### Shell Execution
 
 ```bash
-# Record all tests
-./tests/run_tests.sh http://localhost:8080 --record
-
-# Record specific tests
-pytest tests/ -v --api-url http://localhost:8080 --record -k "browser"
-
-# Custom recording directory and framerate
-pytest tests/ -v --api-url http://localhost:8080 --record --record-dir ./my-recordings --record-fps 30
+curl -X POST http://localhost:8080/shell/exec \
+  -H "Content-Type: application/json" \
+  -d '{"command": "echo hello && uname -a"}'
 ```
 
-Recordings are saved as MP4 files organized by test class:
-```
-recordings/
-├── TestBrowser/
-│   ├── test_browser_launch_20241212_171500.mp4
-│   ├── test_browser_navigate_20241212_171505.mp4
-│   └── ...
-├── TestMultiTurnTasks/
-│   ├── test_web_form_interaction_20241212_171530.mp4
-│   └── ...
-└── ...
-```
-
-#### Manual Recording in Tests
-
-For fine-grained control, use the `record_test` fixture:
-
-```python
-def test_custom_workflow(client, record_test):
-    # Setup (not recorded)
-    client.post("/browser/launch")
-
-    # Record only the important part
-    with record_test("my_workflow"):
-        client.post("/browser/navigate", json={"url": "https://example.com"})
-        client.post("/browser/click", json={"selector": "button"})
-        # ... more actions ...
-
-    # Cleanup (not recorded)
-    client.post("/browser/close")
-```
-
-### Environment Variable
-
-You can also set the API URL via environment variable:
+### Code Execution
 
 ```bash
-export SANDBOX_API_URL=http://localhost:8080
-pytest tests/ -v
+curl -X POST http://localhost:8080/code/execute \
+  -H "Content-Type: application/json" \
+  -d '{"code": "print(2 + 2)", "language": "python"}'
+```
+
+### Browser Automation
+
+```bash
+# Navigate and get title
+curl -X POST http://localhost:8080/browser/goto \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+
+# Take screenshot
+curl -X POST http://localhost:8080/browser/screenshot \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}' | jq -r '.data' | base64 -d > screenshot.png
+
+# Execute JavaScript
+curl -X POST http://localhost:8080/browser/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "script": "document.title"}'
+```
+
+### File Operations
+
+```bash
+# Write file
+curl -X POST http://localhost:8080/file/write \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/tmp/test.txt", "content": "Hello, World!"}'
+
+# Read file
+curl "http://localhost:8080/file/read?path=/tmp/test.txt"
+
+# List directory
+curl "http://localhost:8080/file/list?path=/tmp"
+```
+
+### Skills
+
+```bash
+# Create a skill
+curl -X POST http://localhost:8080/skills \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-helper",
+    "description": "A helpful skill",
+    "body": "Instructions for the skill..."
+  }'
+
+# Search skills
+curl "http://localhost:8080/skills/search?q=helper"
 ```
 
 ## Configuration
 
-Environment variables in `docker-compose.yml`:
+Environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SANDBOX_API_PORT` | 8080 | API server port |
-| `VNC_PORT` | 5900 | VNC server port |
-| `NOVNC_PORT` | 6080 | noVNC web port |
-| `CDP_PORT` | 9222 | Chrome DevTools port |
-| `BROWSER_HEADLESS` | false | Run browser headless |
-| `WORKSPACE` | /home/sandbox/workspace | Working directory |
+| `PORT` | `8080` | API server port |
+| `WORKSPACE` | `/home/sandbox/workspace` | Default working directory |
+| `DISPLAY` | `:99` | X11 display for browser |
+| `CDP_PORT` | `9222` | Chrome DevTools Protocol port |
+| `SKILLS_DIR` | `./skills` | Skills storage directory |
+| `BROWSER_HEADLESS` | `true` | Run browser in headless mode |
+| `BROWSER_EXECUTABLE` | (auto-detect) | Path to Chromium binary |
+| `BROWSER_VIEWPORT_WIDTH` | `1280` | Default viewport width |
+| `BROWSER_VIEWPORT_HEIGHT` | `720` | Default viewport height |
+| `BROWSER_TIMEOUT` | `30` | Default operation timeout (seconds) |
 
-## Architecture
+## Testing
 
-```
-┌──────────────────────────────────────────────────┐
-│                 Docker Container                 │
-│  ┌────────────────────────────────────────────┐  │
-│  │         FastAPI Control Server             │  │
-│  │              (Port 8080)                   │  │
-│  └──────────────────┬─────────────────────────┘  │
-│                     │                            │
-│    ┌────────────────┼────────────────┐          │
-│    │                │                │          │
-│    ▼                ▼                ▼          │
-│ ┌──────┐      ┌──────────┐      ┌────────┐     │
-│ │ PTY  │      │Playwright│      │  Nix   │     │
-│ │Shell │      │ Browser  │      │Runtimes│     │
-│ └──────┘      └──────────┘      └────────┘     │
-│                     │                           │
-│              ┌──────┴──────┐                   │
-│              │   Xvfb :99  │                   │
-│              │  (Virtual)  │                   │
-│              └──────┬──────┘                   │
-│                     │                           │
-│         ┌──────────┴──────────┐               │
-│         ▼                     ▼               │
-│    ┌─────────┐          ┌─────────┐          │
-│    │ x11vnc  │          │  noVNC  │          │
-│    │ :5900   │          │  :6080  │          │
-│    └─────────┘          └─────────┘          │
-└──────────────────────────────────────────────────┘
+```bash
+cd sandbox-rs
+
+# Run unit tests
+cargo test --bin sandbox-api
+
+# Run integration tests (requires running server)
+PORT=9090 cargo run &
+TEST_BASE_URL=http://localhost:9090 cargo test
+
+# Run browser tests (requires Chromium)
+TEST_BASE_URL=http://localhost:9090 cargo test --test browser_test -- --ignored
 ```
 
-## Extending
+## Project Structure
 
-### Add more languages
-
-Edit `nix/shell.nix` to add packages:
-
-```nix
-buildInputs = with pkgs; [
-  # ... existing packages
-  ruby
-  php
-  julia
-];
 ```
-
-Update `LANG_CONFIG` in `sandbox-api/main.py`:
-
-```python
-LANG_CONFIG = {
-    # ... existing
-    "ruby": {"ext": ".rb", "cmd": "ruby"},
-    "php": {"ext": ".php", "cmd": "php"},
-}
+sandbox-rs/
+├── Cargo.toml
+├── src/
+│   ├── main.rs           # Entry point, router setup
+│   ├── config.rs         # Environment configuration
+│   ├── error.rs          # Error types
+│   ├── state.rs          # Application state
+│   ├── browser/          # Browser automation
+│   │   ├── mod.rs
+│   │   ├── service.rs    # BrowserService with lazy init
+│   │   └── types.rs      # Request/response types
+│   ├── handlers/         # HTTP handlers
+│   │   ├── mod.rs
+│   │   ├── health.rs
+│   │   ├── shell.rs
+│   │   ├── code.rs
+│   │   ├── file.rs
+│   │   ├── browser.rs
+│   │   ├── skills.rs
+│   │   ├── factory.rs
+│   │   └── tee.rs
+│   ├── skills/           # Skills system
+│   │   ├── mod.rs
+│   │   ├── registry.rs   # Filesystem-based registry
+│   │   ├── types.rs      # Skill types
+│   │   └── factory.rs    # Skill creation dialogue
+│   └── tee/              # TEE integration (feature-gated)
+│       └── mod.rs
+└── tests/
+    ├── health_test.rs
+    ├── shell_test.rs
+    ├── code_test.rs
+    ├── file_test.rs
+    ├── browser_test.rs
+    ├── skills_test.rs
+    ├── factory_test.rs
+    └── tee_test.rs
 ```
-
-### Custom Nix configuration
-
-For a full NixOS VM instead of nix-shell, create `nix/configuration.nix`:
-
-```nix
-{ config, pkgs, ... }:
-{
-  services.xserver.enable = true;
-  # ... full NixOS config
-}
-```
-
-## Security Notes
-
-- The container runs with elevated privileges for Xvfb/VNC
-- For production, consider:
-  - Adding authentication to the API
-  - Running behind a reverse proxy with TLS
-  - Using resource limits (CPU/memory)
-  - Network isolation
 
 ## License
 

@@ -61,6 +61,7 @@ pub struct FactorySession {
     pub id: String,
     pub step: FactoryStep,
     pub answers: FactoryAnswers,
+    #[allow(dead_code)] // Used by cleanup_expired
     pub created_at: Instant,
 }
 
@@ -240,11 +241,13 @@ impl FactorySessions {
     }
 
     /// Get a session by ID
+    #[allow(dead_code)] // Used in tests, reserved for future session lookup
     pub fn get(&self, id: &str) -> Option<FactorySession> {
         self.sessions.get(id).map(|s| s.clone())
     }
 
     /// Remove expired sessions
+    #[allow(dead_code)] // Reserved for background cleanup task
     pub fn cleanup_expired(&self, max_age_secs: u64) {
         let now = Instant::now();
         self.sessions.retain(|_, session| {

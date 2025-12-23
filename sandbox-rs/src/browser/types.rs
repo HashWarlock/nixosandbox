@@ -12,8 +12,10 @@ fn default_format() -> String {
 #[derive(Debug, Deserialize)]
 pub struct GotoRequest {
     pub url: String,
+    #[allow(dead_code)] // Reserved for future wait_until support
     #[serde(default)]
     pub wait_until: Option<String>, // "load", "domcontentloaded", "networkidle"
+    #[allow(dead_code)] // Reserved for future timeout support
     #[serde(default = "default_timeout")]
     pub timeout: u64,
 }
@@ -90,6 +92,7 @@ pub enum BrowserError {
     #[error("JavaScript error: {0}")]
     ScriptError(String),
 
+    #[allow(dead_code)] // Reserved for future timeout support
     #[error("Timeout after {0}s")]
     Timeout(u64),
 

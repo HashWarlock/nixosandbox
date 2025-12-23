@@ -12,6 +12,7 @@ pub struct BrowserServiceConfig {
     pub executable_path: Option<String>,
     pub viewport_width: u32,
     pub viewport_height: u32,
+    #[allow(dead_code)] // Reserved for future timeout support
     pub timeout: u64,
 }
 
