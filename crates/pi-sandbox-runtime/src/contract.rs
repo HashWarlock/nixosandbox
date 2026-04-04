@@ -136,6 +136,8 @@ pub struct ValidationWarning {
 #[serde(rename_all = "camelCase")]
 pub struct EffectiveState {
     pub network: EffectiveNetwork,
+    pub namespaces_applied: Vec<String>,
+    pub env_applied: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

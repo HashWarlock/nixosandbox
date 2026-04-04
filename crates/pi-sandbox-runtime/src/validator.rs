@@ -112,8 +112,12 @@ pub fn validate(plan: &PlanPayload) -> ValidationPayload {
         });
     }
 
+    let env_applied: Vec<String> = plan.manifest.env.keys().cloned().collect();
+
     let effective_state = Some(EffectiveState {
         network: effective_network,
+        namespaces_applied: vec![],
+        env_applied,
     });
 
     ValidationPayload {
