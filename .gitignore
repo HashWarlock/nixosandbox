@@ -108,3 +108,13 @@ tests/__pycache__/
 *.key
 credentials.json
 secrets.json
+
+# Pi Sandbox Extension
+packages/pi-sandbox-extension/node_modules/
+packages/pi-sandbox-extension/dist/
+
+# Pi Sandbox Runtime
+crates/pi-sandbox-runtime/target/
+
+# Protocol tests
+tests/protocol/node_modules/
