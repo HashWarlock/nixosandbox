@@ -1,0 +1,110 @@
+use crate::contract::{
+    EffectiveNetwork, EffectiveState, PlanPayload, ValidationError, ValidationPayload,
+    ValidationWarning, PROTOCOL_VERSION,
+};
+
+/// Validate a PlanPayload and resolve effective state.
+pub fn validate(plan: &PlanPayload) -> ValidationPayload {
+    // 1. Version check — early return
+    if plan.version != PROTOCOL_VERSION {
+        return ValidationPayload {
+            ok: false,
+            errors: vec![ValidationError {
+                code: "VERSION_MISMATCH".to_string(),
+                message: format!(
+                    "Protocol version mismatch: expected {PROTOCOL_VERSION}, got {}",
+                    plan.version
+                ),
+                field: Some("payload.version".to_string()),
+            }],
+            warnings: vec![],
+            effective_state: None,
+        };
+    }
+
+    let mut errors: Vec<ValidationError> = Vec::new();
+    let mut warnings: Vec<ValidationWarning> = Vec::new();
+
+    // 2. Empty command check
+    if plan.command.is_empty() {
+        errors.push(ValidationError {
+            code: "MISSING_REQUIRED_FIELD".to_string(),
+            message: "command must not be empty".to_string(),
+            field: Some("payload.command".to_string()),
+        });
+    }
+
+    // 3. Writable mounts against allowedWritableTargets
+    for mount in &plan.manifest.mounts {
+        if mount.writable
+            && !plan
+                .policy
+                .allowed_writable_targets
+                .iter()
+                .any(|t| t == &mount.target)
+        {
+            errors.push(ValidationError {
+                code: "RW_TARGET_NOT_ALLOWED".to_string(),
+                message: format!(
+                    "Writable mount target '{}' is not in allowedWritableTargets",
+                    mount.target
+                ),
+                field: Some("payload.manifest.mounts".to_string()),
+            });
+        }
+    }
+
+    // 4. Denied commands check (only if command is non-empty)
+    if !plan.command.is_empty() {
+        if let Some(deny) = &plan.policy.deny_commands {
+            if deny.iter().any(|d| d == &plan.command[0]) {
+                errors.push(ValidationError {
+                    code: "COMMAND_DENIED".to_string(),
+                    message: format!("Command '{}' is denied by policy", plan.command[0]),
+                    field: Some("payload.command".to_string()),
+                });
+            }
+        }
+    }
+
+    // 5. Resolve effective network
+    let (effective_mode, effective_allowlist, degraded) = match plan.policy.network.mode.as_str() {
+        "off" => ("off".to_string(), None, false),
+        "full" => ("full".to_string(), None, false),
+        "allowlist" => {
+            // On this platform we run as observer (no kernel-level enforcement),
+            // so allowlist mode degrades to "observed".
+            let allowlist = plan.policy.network.allowlist.clone();
+            // Degraded: we cannot enforce; we can only observe.
+            ("full".to_string(), allowlist, true)
+        }
+        _ => {
+            // Unknown mode — treat as full, no enforcement.
+            ("full".to_string(), None, false)
+        }
+    };
+
+    // 6. Allowlist-degraded warning
+    if degraded {
+        warnings.push(ValidationWarning {
+            code: "ALLOWLIST_NOT_ENFORCED".to_string(),
+            message:
+                "Network allowlist requested but cannot be enforced; running in observed mode"
+                    .to_string(),
+        });
+    }
+
+    let effective_state = Some(EffectiveState {
+        network: EffectiveNetwork {
+            mode: effective_mode,
+            allowlist: effective_allowlist,
+        },
+    });
+
+    ValidationPayload {
+        ok: errors.is_empty(),
+        errors,
+        warnings,
+        effective_state,
+    }
+}
