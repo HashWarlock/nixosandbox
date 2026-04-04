@@ -68,24 +68,42 @@ pub fn validate(plan: &PlanPayload) -> ValidationPayload {
     }
 
     // 5. Resolve effective network
-    let (effective_mode, effective_allowlist, degraded) = match plan.policy.network.mode.as_str() {
-        "off" => ("off".to_string(), None, false),
-        "full" => ("full".to_string(), None, false),
+    let effective_network = match plan.policy.network.mode.as_str() {
+        "off" => EffectiveNetwork {
+            requested: "off".to_string(),
+            actual: "off".to_string(),
+            enforcement: "enforced".to_string(),
+            degraded: false,
+        },
+        "full" => EffectiveNetwork {
+            requested: "full".to_string(),
+            actual: "full".to_string(),
+            enforcement: "none".to_string(),
+            degraded: false,
+        },
         "allowlist" => {
             // On this platform we run as observer (no kernel-level enforcement),
             // so allowlist mode degrades to "observed".
-            let allowlist = plan.policy.network.allowlist.clone();
-            // Degraded: we cannot enforce; we can only observe.
-            ("full".to_string(), allowlist, true)
+            EffectiveNetwork {
+                requested: "allowlist".to_string(),
+                actual: "full".to_string(),
+                enforcement: "observed".to_string(),
+                degraded: true,
+            }
         }
         _ => {
             // Unknown mode — treat as full, no enforcement.
-            ("full".to_string(), None, false)
+            EffectiveNetwork {
+                requested: plan.policy.network.mode.clone(),
+                actual: "full".to_string(),
+                enforcement: "none".to_string(),
+                degraded: false,
+            }
         }
     };
 
     // 6. Allowlist-degraded warning
-    if degraded {
+    if effective_network.degraded {
         warnings.push(ValidationWarning {
             code: "ALLOWLIST_NOT_ENFORCED".to_string(),
             message:
@@ -95,10 +113,7 @@ pub fn validate(plan: &PlanPayload) -> ValidationPayload {
     }
 
     let effective_state = Some(EffectiveState {
-        network: EffectiveNetwork {
-            mode: effective_mode,
-            allowlist: effective_allowlist,
-        },
+        network: effective_network,
     });
 
     ValidationPayload {

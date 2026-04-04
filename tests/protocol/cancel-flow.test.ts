@@ -53,9 +53,39 @@ describe("Protocol Test 4: Cancel Flow", () => {
 
     expect(cancelRequestedSeen).toBe(true);
 
-    // Force-kill the runtime since the SIGTERM to process group may not work
-    // on all platforms when the child is not a process group leader.
-    rt.kill("SIGKILL");
+    // Try to read remaining events with a timeout to capture the result
+    const resultPromise = new Promise<Record<string, unknown> | null>(
+      async (resolve) => {
+        const timer = setTimeout(() => resolve(null), 5000);
+        try {
+          while (true) {
+            const event = await rt.readline();
+            if (event.type === "result") {
+              clearTimeout(timer);
+              resolve(event);
+              return;
+            }
+          }
+        } catch {
+          clearTimeout(timer);
+          resolve(null);
+        }
+      },
+    );
+
+    const resultEvent = await resultPromise;
+
+    if (resultEvent) {
+      // If the runtime emitted a result, verify the terminal state
+      const resultPayload = resultEvent.payload as any;
+      expect(resultPayload.reconciliationHints.terminalState).toBe(
+        "killed_on_cancel",
+      );
+    } else {
+      // Force-kill the runtime since the SIGTERM to process group may not work
+      // on all platforms when the child is not a process group leader.
+      rt.kill("SIGKILL");
+    }
 
     const exit = await rt.waitForExit();
     // Either killed by our SIGKILL or exited normally (0 or non-zero both acceptable)

@@ -41,18 +41,24 @@ describe("Protocol Test 6: Degraded Allowlist", () => {
     );
     expect(allowlistWarning).toBeDefined();
 
-    // effectiveState.network.mode must be "full" (degraded from allowlist)
+    // effectiveState.network must reflect spec 4-field shape
     const effectiveState = validationPayload.effectiveState;
     expect(effectiveState).not.toBeNull();
-    expect(effectiveState.network.mode).toBe("full");
+    expect(effectiveState.network.requested).toBe("allowlist");
+    expect(effectiveState.network.actual).toBe("full");
+    expect(effectiveState.network.enforcement).toBe("observed");
+    expect(effectiveState.network.degraded).toBe(true);
 
     // Last event must be result
     const result = events[events.length - 1];
     expect(result.type).toBe("result");
     const resultPayload = result.payload as any;
 
-    // Result's effectiveNetwork must also reflect the degraded state
-    expect(resultPayload.effectiveNetwork.mode).toBe("full");
+    // Result's effectiveNetwork must also reflect the degraded state (4-field)
+    expect(resultPayload.effectiveNetwork.requested).toBe("allowlist");
+    expect(resultPayload.effectiveNetwork.actual).toBe("full");
+    expect(resultPayload.effectiveNetwork.enforcement).toBe("observed");
+    expect(resultPayload.effectiveNetwork.degraded).toBe(true);
 
     // Clean exit
     expect(resultPayload.exitCode).toBe(0);

@@ -71,7 +71,7 @@ pub fn supervise(
                 effective_network: effective_state.network.clone(),
                 observed_connections: vec![],
                 would_have_blocked: vec![],
-                terminal_state: "spawn_failed".to_string(),
+                terminal_state: "supervisor_crash".to_string(),
                 workspace_modified: false,
             };
         }
@@ -181,13 +181,11 @@ pub fn supervise(
 
     // Determine terminal state.
     let terminal_state = if cancelled {
-        "cancelled".to_string()
+        "killed_on_cancel".to_string()
     } else if signal.is_some() {
-        "killed".to_string()
-    } else if exit_code == Some(0) {
-        "clean_exit".to_string()
+        "killed_on_timeout".to_string()
     } else {
-        "error_exit".to_string()
+        "clean_exit".to_string()
     };
 
     // Emit lifecycle: exited
@@ -197,7 +195,7 @@ pub fn supervise(
     // Network observation (stub).
     let observed = observe_connections();
     let would_have_blocked =
-        compute_would_have_blocked(&observed, &effective_state.network.allowlist);
+        compute_would_have_blocked(&observed, &plan.policy.network.allowlist);
 
     SupervisionResult {
         exit_code,

@@ -141,8 +141,10 @@ pub struct EffectiveState {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EffectiveNetwork {
-    pub mode: String,
-    pub allowlist: Option<Vec<String>>,
+    pub requested: String,
+    pub actual: String,
+    pub enforcement: String,
+    pub degraded: bool,
 }
 
 impl ValidationEnvelope {
