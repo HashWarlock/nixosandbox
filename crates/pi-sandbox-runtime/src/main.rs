@@ -1,3 +1,4 @@
+mod bubblewrap;
 mod contract;
 mod observer;
 mod supervisor;
