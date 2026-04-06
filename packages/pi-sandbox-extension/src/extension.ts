@@ -16,6 +16,7 @@ import { SessionManager } from "./session-manager.js";
 import type { Session } from "./session-manager.js";
 import { getProfile, DEFAULT_PROFILE } from "./profiles.js";
 import type { RuntimeBase } from "./runtime-base.js";
+import { BrowserManager } from "./browser.js";
 
 // ---------------------------------------------------------------------------
 // Minimal ToolDefinition interface (avoids importing from Pi directly)
@@ -88,6 +89,7 @@ export function createSandboxTools(
   sessionManager: SessionManager,
   runtimeBase: RuntimeBase,
   binaryPath: string,
+  browserManager: BrowserManager,
 ): ToolDefinition[] {
   // -------------------------------------------------------------------------
   // Helper: resolve or create a session
@@ -329,11 +331,73 @@ export function createSandboxTools(
     },
   };
 
+  // -------------------------------------------------------------------------
+  // Tool: sandbox_browser
+  // -------------------------------------------------------------------------
+  const sandboxBrowser: ToolDefinition = {
+    name: "sandbox_browser",
+    description:
+      "Interact with a web browser within a sandbox session. Supports goto, screenshot, evaluate, click, type, and close actions. The page persists between calls within the same session.",
+    parameters: Type.Object({
+      sessionId: Type.String({ description: "Session ID to operate within." }),
+      action: Type.Union(
+        [
+          Type.Literal("goto"),
+          Type.Literal("screenshot"),
+          Type.Literal("evaluate"),
+          Type.Literal("click"),
+          Type.Literal("type"),
+          Type.Literal("close"),
+        ],
+        { description: "Browser action to perform." },
+      ),
+      url: Type.Optional(
+        Type.String({ description: "URL to navigate to (goto action)." }),
+      ),
+      selector: Type.Optional(
+        Type.String({
+          description: "CSS selector for element (click/type actions).",
+        }),
+      ),
+      text: Type.Optional(
+        Type.String({ description: "Text to type (type action)." }),
+      ),
+      script: Type.Optional(
+        Type.String({
+          description: "JavaScript to evaluate (evaluate action).",
+        }),
+      ),
+    }),
+    async execute(args: unknown): Promise<string> {
+      const { sessionId, action, url, selector, text, script } = args as {
+        sessionId: string;
+        action: string;
+        url?: string;
+        selector?: string;
+        text?: string;
+        script?: string;
+      };
+
+      // Verify session exists (except for close which is best-effort)
+      if (action !== "close") {
+        resolveSession(sessionId);
+      }
+
+      return browserManager.execute(sessionId, action, {
+        url,
+        selector,
+        text,
+        script,
+      });
+    },
+  };
+
   return [
     sandboxRun,
     sandboxReadFile,
     sandboxWriteFile,
     sandboxListFiles,
     sandboxSessionInfo,
+    sandboxBrowser,
   ];
 }
