@@ -31,7 +31,11 @@ export type ErrorCode =
 export type WarningCode =
   | "ALLOWLIST_NOT_ENFORCED"
   | "NAMESPACE_DEGRADED"
-  | "RESOURCE_LIMIT_IGNORED";
+  | "RESOURCE_LIMIT_IGNORED"
+  | "DNS_RESOLUTION_PARTIAL"
+  | "ALLOWLIST_DNS_FAILED"
+  | "ENFORCEMENT_LEAK"
+  | "IPTABLES_NOT_FOUND";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -127,11 +131,16 @@ export type InboundMessage = PlanMessage | CancelMessage;
 
 export const EffectiveNetworkSchema = Type.Object({
   requested: NetworkModeSchema,
-  actual: Type.Union([Type.Literal("off"), Type.Literal("full")]),
+  actual: Type.Union([
+    Type.Literal("off"),
+    Type.Literal("full"),
+    Type.Literal("allowlist"),
+  ]),
   enforcement: Type.Union([
     Type.Literal("enforced"),
     Type.Literal("observed"),
     Type.Literal("none"),
+    Type.Literal("best_effort"),
   ]),
   degraded: Type.Boolean(),
 });
