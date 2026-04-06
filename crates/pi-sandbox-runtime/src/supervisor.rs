@@ -10,7 +10,7 @@ use crate::contract::{
     emit, EffectiveNetwork, EffectiveState, LifecycleEnvelope, ObservedConnection,
     StderrEnvelope, StdoutEnvelope, PlanPayload,
 };
-use crate::observer::{compute_would_have_blocked, observe_connections};
+use crate::observer::{compute_would_have_blocked, NetworkObserver};
 use crate::plan_builder;
 
 pub struct SupervisionResult {
@@ -85,6 +85,9 @@ pub fn supervise(
             };
         }
     };
+
+    // Start network observer (Linux: polls /proc/net/tcp; non-Linux: no-op).
+    let observer = NetworkObserver::start(Arc::clone(&seq));
 
     let child_stdout = child.stdout.take().expect("stdout was piped");
     let child_stderr = child.stderr.take().expect("stderr was piped");
@@ -186,7 +189,8 @@ pub fn supervise(
     let s = seq.fetch_add(1, Ordering::SeqCst);
     emit(&LifecycleEnvelope::new(s, "exited".to_string()));
 
-    let observed = observe_connections();
+    // Stop observer and collect observed connections.
+    let observed = observer.stop();
     let would_have_blocked =
         compute_would_have_blocked(&observed, &plan.policy.network.allowlist);
 
