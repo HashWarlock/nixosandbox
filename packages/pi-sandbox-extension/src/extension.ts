@@ -1,7 +1,7 @@
 /**
  * Extension Tools
  *
- * Factories for the 5 sandbox tools exposed to the Pi host.
+ * Factories for the sandbox tools exposed to the Pi host.
  */
 
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -16,7 +16,7 @@ import { SessionManager } from "./session-manager.js";
 import type { Session } from "./session-manager.js";
 import { getProfile, DEFAULT_PROFILE } from "./profiles.js";
 import type { RuntimeBase } from "./runtime-base.js";
-import { BrowserManager } from "./browser.js";
+import type { BrowserManager } from "./browser.js";
 
 // ---------------------------------------------------------------------------
 // Minimal ToolDefinition interface (avoids importing from Pi directly)

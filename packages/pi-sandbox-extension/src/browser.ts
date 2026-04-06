@@ -13,14 +13,21 @@ export class BrowserManager {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private pages: Map<string, Page> = new Map();
+  private launchPromise: Promise<BrowserContext> | null = null;
 
   /**
    * Launch the browser if not already running.
    * Uses PLAYWRIGHT_CHROMIUM_PATH env var or system chromium.
+   * Guards against concurrent callers racing to launch two browsers.
    */
-  private async ensureBrowser(): Promise<BrowserContext> {
-    if (this.context) return this.context;
+  private ensureBrowser(): Promise<BrowserContext> {
+    if (!this.launchPromise) {
+      this.launchPromise = this._doLaunch();
+    }
+    return this.launchPromise;
+  }
 
+  private async _doLaunch(): Promise<BrowserContext> {
     const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined;
     this.browser = await chromium.launch({
       headless: true,
@@ -134,12 +141,12 @@ export class BrowserManager {
    * Shut down the browser entirely. Called on extension teardown.
    */
   async shutdown(): Promise<void> {
-    for (const [id, page] of this.pages) {
+    for (const [, page] of this.pages) {
       if (!page.isClosed()) {
         await page.close();
       }
-      this.pages.delete(id);
     }
+    this.pages.clear();
     if (this.context) {
       await this.context.close();
       this.context = null;
@@ -148,5 +155,6 @@ export class BrowserManager {
       await this.browser.close();
       this.browser = null;
     }
+    this.launchPromise = null;
   }
 }
