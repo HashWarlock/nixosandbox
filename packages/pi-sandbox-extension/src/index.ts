@@ -11,6 +11,7 @@ import { SessionManager } from "./session-manager.js";
 import { createHostDerivedBase } from "./runtime-base.js";
 import { createSandboxTools } from "./extension.js";
 import { reconcileAll } from "./reconciler.js";
+import { BrowserManager } from "./browser.js";
 
 // ---------------------------------------------------------------------------
 // Extension entry point
@@ -41,9 +42,11 @@ export default function sandboxExtension(
   const binaryPath = opts.binaryPath ?? "pi-sandbox-supervisor";
   const sessionManager = new SessionManager(opts.sessionsDir);
   const runtimeBase = createHostDerivedBase();
+  const browserManager = new BrowserManager();
+  sessionManager.setBrowserManager(browserManager);
 
   // Register tools
-  const tools = createSandboxTools(sessionManager, runtimeBase, binaryPath);
+  const tools = createSandboxTools(sessionManager, runtimeBase, binaryPath, browserManager);
   for (const tool of tools) {
     pi.registerTool(tool);
   }
@@ -57,7 +60,7 @@ export default function sandboxExtension(
     }
   });
 
-  // Lifecycle: on session_shutdown → mark active sessions idle, clean tmp
+  // Lifecycle: on session_shutdown → mark active sessions idle, clean tmp, shut down browser
   pi.on("session_shutdown", () => {
     const records = sessionManager.list();
     for (const record of records) {
@@ -71,6 +74,7 @@ export default function sandboxExtension(
         }
       }
     }
+    browserManager.shutdown().catch(() => {});
   });
 }
 
