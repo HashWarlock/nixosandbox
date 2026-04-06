@@ -18,7 +18,6 @@ fn main() {
     let stdin = io::stdin();
     let mut first_line = String::new();
 
-    // 1. Read exactly one line from stdin and parse it as an InboundMessage.
     if stdin.lock().read_line(&mut first_line).is_err() {
         eprintln!("pi-sandbox-runtime: failed to read from stdin");
         std::process::exit(1);
@@ -26,7 +25,6 @@ fn main() {
 
     let first_line = first_line.trim();
 
-    // 2. On parse error: emit PARSE_ERROR validation, exit.
     let message: InboundMessage = match serde_json::from_str(first_line) {
         Ok(m) => m,
         Err(e) => {
@@ -44,7 +42,6 @@ fn main() {
         }
     };
 
-    // 3. On Cancel before Plan: log to stderr, exit.
     let plan = match message {
         InboundMessage::Plan { payload } => payload,
         InboundMessage::Cancel { payload } => {
@@ -56,23 +53,22 @@ fn main() {
         }
     };
 
-    // 4. Validate the plan.
-    let validation = validator::validate(&plan);
+    // Detect Bubblewrap availability.
+    let bwrap = bubblewrap::detect();
 
-    // 5. Emit validation message.
+    // Validate the plan (now takes bwrap availability).
+    let validation = validator::validate(&plan, &bwrap);
+
     emit(&ValidationEnvelope::new(validation.clone()));
 
-    // 6. If validation failed: exit(0).
     if !validation.ok {
         std::process::exit(0);
     }
 
-    // 7. Clone effectiveState from validation (safe: ok == true guarantees it's Some).
     let effective_state = validation
         .effective_state
         .expect("effectiveState must be Some when ok=true");
 
-    // 8. Spawn background thread to read remaining stdin lines for cancel signal.
     let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
     std::thread::spawn(move || {
         let stdin = io::stdin();
@@ -87,17 +83,14 @@ fn main() {
                     let _ = cancel_tx.send(());
                     break;
                 }
-                _ => {
-                    // Ignore unknown messages during execution.
-                }
+                _ => {}
             }
         }
     });
 
-    // 9. Run the supervisor.
-    let result = supervisor::supervise(&plan, &effective_state, cancel_rx);
+    // Supervise (now takes bwrap availability).
+    let result = supervisor::supervise(&plan, &effective_state, cancel_rx, &bwrap);
 
-    // 10. Emit final ResultEnvelope from supervision result.
     emit(&ResultEnvelope::new(ResultPayload {
         exit_code: result.exit_code,
         signal: result.signal,
@@ -114,6 +107,5 @@ fn main() {
         },
     }));
 
-    // 11. Exit.
     std::process::exit(0);
 }

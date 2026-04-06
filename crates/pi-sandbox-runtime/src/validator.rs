@@ -1,10 +1,11 @@
+use crate::bubblewrap::BwrapAvailability;
 use crate::contract::{
     EffectiveNetwork, EffectiveState, PlanPayload, ValidationError, ValidationPayload,
     ValidationWarning, PROTOCOL_VERSION,
 };
 
 /// Validate a PlanPayload and resolve effective state.
-pub fn validate(plan: &PlanPayload) -> ValidationPayload {
+pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayload {
     // 1. Version check — early return
     if plan.version != PROTOCOL_VERSION {
         return ValidationPayload {
@@ -81,25 +82,18 @@ pub fn validate(plan: &PlanPayload) -> ValidationPayload {
             enforcement: "none".to_string(),
             degraded: false,
         },
-        "allowlist" => {
-            // On this platform we run as observer (no kernel-level enforcement),
-            // so allowlist mode degrades to "observed".
-            EffectiveNetwork {
-                requested: "allowlist".to_string(),
-                actual: "full".to_string(),
-                enforcement: "observed".to_string(),
-                degraded: true,
-            }
-        }
-        _ => {
-            // Unknown mode — treat as full, no enforcement.
-            EffectiveNetwork {
-                requested: plan.policy.network.mode.clone(),
-                actual: "full".to_string(),
-                enforcement: "none".to_string(),
-                degraded: false,
-            }
-        }
+        "allowlist" => EffectiveNetwork {
+            requested: "allowlist".to_string(),
+            actual: "full".to_string(),
+            enforcement: "observed".to_string(),
+            degraded: true,
+        },
+        _ => EffectiveNetwork {
+            requested: plan.policy.network.mode.clone(),
+            actual: "full".to_string(),
+            enforcement: "none".to_string(),
+            degraded: false,
+        },
     };
 
     // 6. Allowlist-degraded warning
@@ -112,11 +106,40 @@ pub fn validate(plan: &PlanPayload) -> ValidationPayload {
         });
     }
 
-    let env_applied: Vec<String> = plan.manifest.env.keys().cloned().collect();
+    // 7. Resolve namespaces based on bwrap availability
+    let namespaces_applied = match bwrap {
+        BwrapAvailability::Available { .. } => {
+            plan.policy.namespaces.clone()
+        }
+        BwrapAvailability::Unavailable { .. } => {
+            for ns in &plan.policy.namespaces {
+                warnings.push(ValidationWarning {
+                    code: "NAMESPACE_DEGRADED".to_string(),
+                    message: format!(
+                        "Namespace '{}' requested but cannot be applied (bwrap unavailable)",
+                        ns
+                    ),
+                });
+            }
+            vec![]
+        }
+    };
+
+    // 8. Resolve applied environment keys
+    let env_applied: Vec<String> = if let Some(allowlist) = &plan.policy.env_allowlist {
+        plan.manifest
+            .env
+            .keys()
+            .filter(|k| allowlist.contains(k))
+            .cloned()
+            .collect()
+    } else {
+        plan.manifest.env.keys().cloned().collect()
+    };
 
     let effective_state = Some(EffectiveState {
         network: effective_network,
-        namespaces_applied: vec![],
+        namespaces_applied,
         env_applied,
     });
 
