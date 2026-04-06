@@ -1,6 +1,7 @@
 mod bubblewrap;
 mod contract;
 mod observer;
+mod plan_builder;
 mod supervisor;
 mod timestamps;
 mod validator;
