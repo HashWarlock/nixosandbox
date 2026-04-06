@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.34.0"
+    "@sinclair/typebox": "^0.34.0",
+    "playwright-core": "^1.50.0"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
