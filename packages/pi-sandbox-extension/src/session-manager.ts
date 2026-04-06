@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import type { Manifest, Mount } from "./contract.js";
 import type { Profile } from "./profiles.js";
 import type { RuntimeBase } from "./runtime-base.js";
+import type { BrowserManager } from "./browser.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,6 +75,11 @@ const SESSION_SUBDIRS = [
 
 export class SessionManager {
   private readonly baseDir: string;
+  private browserManager: BrowserManager | null = null;
+
+  setBrowserManager(bm: BrowserManager): void {
+    this.browserManager = bm;
+  }
 
   constructor(baseDir?: string) {
     this.baseDir =
@@ -284,6 +290,10 @@ export class SessionManager {
   }
 
   tombstone(session: Session): Session {
+    // Close browser page if browser manager is wired
+    if (this.browserManager) {
+      this.browserManager.closePage(session.record.sessionId).catch(() => {});
+    }
     const record: SessionRecord = {
       ...session.record,
       state: "tombstoned",
