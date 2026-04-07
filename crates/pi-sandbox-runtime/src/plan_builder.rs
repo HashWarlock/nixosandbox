@@ -147,6 +147,7 @@ mod tests {
             },
             namespaces_applied: o.namespaces.unwrap_or_else(|| vec!["user".to_string(), "pid".to_string()]),
             env_applied: vec!["HOME".to_string(), "PATH".to_string()],
+            resolved_allowlist: vec![],
         }
     }
 

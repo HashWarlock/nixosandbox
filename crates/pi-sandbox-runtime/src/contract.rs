@@ -138,6 +138,15 @@ pub struct EffectiveState {
     pub network: EffectiveNetwork,
     pub namespaces_applied: Vec<String>,
     pub env_applied: Vec<String>,
+    pub resolved_allowlist: Vec<ResolvedAllowlistEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedAllowlistEntry {
+    pub hostname: String,
+    pub ips: Vec<String>,
+    pub resolved: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

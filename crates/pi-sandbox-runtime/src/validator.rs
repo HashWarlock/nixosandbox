@@ -141,6 +141,7 @@ pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayl
         network: effective_network,
         namespaces_applied,
         env_applied,
+        resolved_allowlist: vec![],
     });
 
     ValidationPayload {
