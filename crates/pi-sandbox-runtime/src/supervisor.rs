@@ -8,7 +8,7 @@ use std::time::Instant;
 use crate::bubblewrap::BwrapAvailability;
 use crate::contract::{
     emit, EffectiveNetwork, EffectiveState, LifecycleEnvelope, ObservedConnection,
-    StderrEnvelope, StdoutEnvelope, PlanPayload,
+    StderrEnvelope, StdoutEnvelope, PlanPayload, WarningEnvelope,
 };
 use crate::observer::{compute_would_have_blocked, NetworkObserver};
 use crate::plan_builder;
@@ -45,10 +45,50 @@ pub fn supervise(
     // Build the child process — either via bwrap or direct execution.
     let mut cmd = match bwrap {
         BwrapAvailability::Available { path } => {
-            let argv = plan_builder::build(plan, effective_state);
-            let mut c = Command::new(path);
-            c.args(&argv);
-            c
+            // Detect iptables path for allowlist enforcement
+            let iptables_path = if effective_state.network.actual == "allowlist"
+                && effective_state.network.enforcement == "enforced"
+            {
+                std::process::Command::new("which")
+                    .arg("iptables")
+                    .output()
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            };
+
+            let argv = plan_builder::build_with_allowlist(
+                plan,
+                effective_state,
+                iptables_path.as_deref(),
+            );
+
+            // If allowlist enforcement is active, write the wrapper script to a temp file
+            if effective_state.network.actual == "allowlist"
+                && effective_state.network.enforcement == "enforced"
+            {
+                let script = plan_builder::generate_iptables_wrapper(
+                    &effective_state.resolved_allowlist,
+                );
+                let script_path = std::env::temp_dir().join(".pi-sandbox-allowlist.sh");
+                std::fs::write(&script_path, &script).expect("failed to write iptables wrapper");
+                // Prepend bind mount for the script before the rest of argv
+                let mut full_argv = vec![
+                    "--ro-bind".to_string(),
+                    script_path.to_string_lossy().to_string(),
+                    "/tmp/.pi-sandbox-allowlist.sh".to_string(),
+                ];
+                full_argv.extend(argv);
+                let mut c = Command::new(path);
+                c.args(&full_argv);
+                c
+            } else {
+                let mut c = Command::new(path);
+                c.args(&argv);
+                c
+            }
         }
         BwrapAvailability::Unavailable { .. } => {
             let mut c = Command::new(&plan.command[0]);
@@ -193,6 +233,22 @@ pub fn supervise(
     let observed = observer.stop();
     let would_have_blocked =
         compute_would_have_blocked(&observed, &plan.policy.network.allowlist);
+
+    // Enforcement leak detection: if enforcement was active but observer saw blocked connections
+    if effective_state.network.enforcement == "enforced"
+        && effective_state.network.actual == "allowlist"
+        && !would_have_blocked.is_empty()
+    {
+        let s = seq.fetch_add(1, Ordering::SeqCst);
+        emit(&WarningEnvelope::new(
+            s,
+            "ENFORCEMENT_LEAK".to_string(),
+            format!(
+                "Observer detected {} connection(s) that should have been blocked by iptables",
+                would_have_blocked.len()
+            ),
+        ));
+    }
 
     SupervisionResult {
         exit_code,
