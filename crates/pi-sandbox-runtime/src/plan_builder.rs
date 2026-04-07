@@ -1,4 +1,4 @@
-use crate::contract::{EffectiveNetwork, EffectiveState, PlanPayload};
+use crate::contract::{EffectiveNetwork, EffectiveState, PlanPayload, ResolvedAllowlistEntry};
 
 /// Build the Bubblewrap argument vector from a validated plan and its effective state.
 ///
@@ -54,8 +54,10 @@ pub fn build(plan: &PlanPayload, effective_state: &EffectiveState) -> Vec<String
             "ipc" => argv.push("--unshare-ipc".to_string()),
             "uts" => argv.push("--unshare-uts".to_string()),
             "net" => {
-                // Only unshare network if actual mode is "off"
-                if effective_state.network.actual == "off" {
+                if effective_state.network.actual == "off"
+                    || (effective_state.network.actual == "allowlist"
+                        && effective_state.network.enforcement == "enforced")
+                {
                     argv.push("--unshare-net".to_string());
                 }
             }
@@ -82,6 +84,122 @@ pub fn build(plan: &PlanPayload, effective_state: &EffectiveState) -> Vec<String
 
     // 7. Command (after --)
     argv.push("--".to_string());
+    for part in &plan.command {
+        argv.push(part.clone());
+    }
+
+    argv
+}
+
+/// Generate an iptables wrapper script for allowlist enforcement.
+pub fn generate_iptables_wrapper(entries: &[ResolvedAllowlistEntry]) -> String {
+    let mut script = String::new();
+    script.push_str("#!/bin/sh\nset -e\n");
+    script.push_str("iptables -P OUTPUT DROP\n");
+    script.push_str("iptables -A OUTPUT -o lo -j ACCEPT\n");
+    script.push_str("iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\n");
+
+    for entry in entries {
+        for ip in &entry.ips {
+            script.push_str(&format!("iptables -A OUTPUT -d {ip} -j ACCEPT\n"));
+        }
+    }
+
+    script.push_str("exec \"$@\"\n");
+    script
+}
+
+/// Build bwrap argv with allowlist enforcement support.
+///
+/// When allowlist enforcement is enforced, this function:
+/// 1. Mounts the iptables binary read-only
+/// 2. Uses --unshare-net
+/// 3. Wraps the user command with the iptables setup script
+pub fn build_with_allowlist(
+    plan: &PlanPayload,
+    effective_state: &EffectiveState,
+    iptables_path: Option<&str>,
+) -> Vec<String> {
+    let needs_wrapper = effective_state.network.actual == "allowlist"
+        && effective_state.network.enforcement == "enforced"
+        && iptables_path.is_some();
+
+    let mut argv = Vec::new();
+
+    // 1. Mounts
+    for mount in &plan.manifest.mounts {
+        match mount.mount_type.as_str() {
+            "directory" | "file" => {
+                let flag = if mount.writable { "--bind" } else { "--ro-bind" };
+                let source = mount.source.as_deref().unwrap_or(&mount.target);
+                argv.push(flag.to_string());
+                argv.push(source.to_string());
+                argv.push(mount.target.clone());
+            }
+            "tmpfs" => {
+                argv.push("--tmpfs".to_string());
+                argv.push(mount.target.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // Mount iptables binary if needed
+    if let (true, Some(ipt)) = (needs_wrapper, iptables_path) {
+        argv.push("--ro-bind".to_string());
+        argv.push(ipt.to_string());
+        argv.push("/usr/sbin/iptables".to_string());
+    }
+
+    // 2. Devices
+    for dev in &["/dev/null", "/dev/zero", "/dev/urandom", "/dev/random"] {
+        argv.push("--dev-bind".to_string());
+        argv.push(dev.to_string());
+        argv.push(dev.to_string());
+    }
+
+    // 3. Proc
+    argv.push("--proc".to_string());
+    argv.push("/proc".to_string());
+
+    // 4. Namespaces
+    for ns in &effective_state.namespaces_applied {
+        match ns.as_str() {
+            "pid" => argv.push("--unshare-pid".to_string()),
+            "ipc" => argv.push("--unshare-ipc".to_string()),
+            "uts" => argv.push("--unshare-uts".to_string()),
+            "net" => {
+                if effective_state.network.actual == "off"
+                    || (effective_state.network.actual == "allowlist"
+                        && effective_state.network.enforcement == "enforced")
+                {
+                    argv.push("--unshare-net".to_string());
+                }
+            }
+            "cgroup-try" => argv.push("--unshare-cgroup-try".to_string()),
+            "user" => {}
+            _ => {}
+        }
+    }
+
+    // 5. Environment
+    argv.push("--clearenv".to_string());
+    for (key, value) in &plan.manifest.env {
+        argv.push("--setenv".to_string());
+        argv.push(key.clone());
+        argv.push(value.clone());
+    }
+
+    // 6. Working directory
+    argv.push("--chdir".to_string());
+    argv.push(plan.manifest.cwd.clone());
+
+    // 7. Command
+    argv.push("--".to_string());
+    if needs_wrapper {
+        argv.push("/bin/sh".to_string());
+        argv.push("/tmp/.pi-sandbox-allowlist.sh".to_string());
+    }
     for part in &plan.command {
         argv.push(part.clone());
     }
@@ -355,5 +473,98 @@ mod tests {
         let idx = argv.iter().position(|a| a == "--ro-bind").unwrap();
         assert_eq!(argv[idx + 1], "/etc/resolv.conf");
         assert_eq!(argv[idx + 2], "/etc/resolv.conf");
+    }
+
+    #[test]
+    fn generate_iptables_wrapper_produces_valid_script() {
+        let entries = vec![
+            ResolvedAllowlistEntry {
+                hostname: "example.com".to_string(),
+                ips: vec!["93.184.216.34".to_string(), "2606:2800:220:1::1".to_string()],
+                resolved: true,
+            },
+        ];
+        let script = generate_iptables_wrapper(&entries);
+        assert!(script.contains("#!/bin/sh"));
+        assert!(script.contains("iptables -P OUTPUT DROP"));
+        assert!(script.contains("iptables -A OUTPUT -d 93.184.216.34 -j ACCEPT"));
+        assert!(script.contains("iptables -A OUTPUT -d 2606:2800:220:1::1 -j ACCEPT"));
+        assert!(script.contains("iptables -A OUTPUT -o lo -j ACCEPT"));
+        assert!(script.contains("exec \"$@\""));
+    }
+
+    #[test]
+    fn generate_iptables_wrapper_with_no_entries_still_valid() {
+        let script = generate_iptables_wrapper(&[]);
+        assert!(script.contains("iptables -P OUTPUT DROP"));
+        assert!(script.contains("exec \"$@\""));
+    }
+
+    #[test]
+    fn build_with_allowlist_enforced_includes_unshare_net() {
+        let plan = make_plan(None);
+        let state = make_effective_state(Some(EffectiveOverrides {
+            namespaces: Some(vec!["user".to_string(), "pid".to_string(), "net".to_string()]),
+            network_requested: Some("allowlist".to_string()),
+            network_actual: Some("allowlist".to_string()),
+            network_enforcement: Some("enforced".to_string()),
+            ..Default::default()
+        }));
+        let argv = build_with_allowlist(&plan, &state, Some("/usr/sbin/iptables"));
+        assert!(argv.contains(&"--unshare-net".to_string()));
+    }
+
+    #[test]
+    fn build_with_allowlist_enforced_mounts_iptables() {
+        let plan = make_plan(None);
+        let state = make_effective_state(Some(EffectiveOverrides {
+            namespaces: Some(vec!["user".to_string(), "pid".to_string(), "net".to_string()]),
+            network_requested: Some("allowlist".to_string()),
+            network_actual: Some("allowlist".to_string()),
+            network_enforcement: Some("enforced".to_string()),
+            ..Default::default()
+        }));
+        let argv = build_with_allowlist(&plan, &state, Some("/usr/sbin/iptables"));
+        let idx = argv.windows(3).position(|w| {
+            w[0] == "--ro-bind" && w[1] == "/usr/sbin/iptables" && w[2] == "/usr/sbin/iptables"
+        });
+        assert!(idx.is_some());
+    }
+
+    #[test]
+    fn build_with_allowlist_enforced_uses_wrapper_command() {
+        let plan = make_plan(Some(PlanOverrides {
+            command: Some(vec!["curl".to_string(), "https://example.com".to_string()]),
+            ..Default::default()
+        }));
+        let state = make_effective_state(Some(EffectiveOverrides {
+            namespaces: Some(vec!["user".to_string(), "pid".to_string(), "net".to_string()]),
+            network_requested: Some("allowlist".to_string()),
+            network_actual: Some("allowlist".to_string()),
+            network_enforcement: Some("enforced".to_string()),
+            ..Default::default()
+        }));
+        let argv = build_with_allowlist(&plan, &state, Some("/usr/sbin/iptables"));
+        let sep = argv.iter().position(|a| a == "--").unwrap();
+        assert_eq!(argv[sep + 1], "/bin/sh");
+        assert_eq!(argv[sep + 2], "/tmp/.pi-sandbox-allowlist.sh");
+        assert_eq!(argv[sep + 3], "curl");
+        assert_eq!(argv[sep + 4], "https://example.com");
+    }
+
+    #[test]
+    fn build_with_allowlist_not_enforced_skips_wrapper() {
+        let plan = make_plan(None);
+        let state = make_effective_state(Some(EffectiveOverrides {
+            network_requested: Some("allowlist".to_string()),
+            network_actual: Some("full".to_string()),
+            network_enforcement: Some("observed".to_string()),
+            network_degraded: Some(true),
+            ..Default::default()
+        }));
+        let argv = build_with_allowlist(&plan, &state, None);
+        assert!(!argv.contains(&"/tmp/.pi-sandbox-allowlist.sh".to_string()));
+        let sep = argv.iter().position(|a| a == "--").unwrap();
+        assert_eq!(argv[sep + 1], "echo");
     }
 }
