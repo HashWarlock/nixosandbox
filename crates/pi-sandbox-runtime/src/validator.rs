@@ -1,8 +1,49 @@
+use std::net::ToSocketAddrs;
+use std::path::PathBuf;
+
 use crate::bubblewrap::BwrapAvailability;
 use crate::contract::{
-    EffectiveNetwork, EffectiveState, PlanPayload, ValidationError, ValidationPayload,
-    ValidationWarning, PROTOCOL_VERSION,
+    EffectiveNetwork, EffectiveState, PlanPayload, ResolvedAllowlistEntry,
+    ValidationError, ValidationPayload, ValidationWarning, PROTOCOL_VERSION,
 };
+
+/// Resolve a hostname to IP addresses using system DNS.
+fn resolve_hostname(hostname: &str) -> Vec<String> {
+    let addr = format!("{hostname}:0");
+    match addr.to_socket_addrs() {
+        Ok(addrs) => addrs.map(|a| a.ip().to_string()).collect::<Vec<_>>(),
+        Err(_) => vec![],
+    }
+}
+
+/// Check if iptables binary is available on the host.
+fn detect_iptables() -> Option<PathBuf> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        return None;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        match std::process::Command::new("which")
+            .arg("iptables")
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                let path_str = String::from_utf8_lossy(&output.stdout)
+                    .trim()
+                    .to_string();
+                let path = PathBuf::from(&path_str);
+                if path.exists() {
+                    Some(path)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+}
 
 /// Validate a PlanPayload and resolve effective state.
 pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayload {
@@ -69,44 +110,129 @@ pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayl
     }
 
     // 5. Resolve effective network
-    let effective_network = match plan.policy.network.mode.as_str() {
-        "off" => EffectiveNetwork {
-            requested: "off".to_string(),
-            actual: "off".to_string(),
-            enforcement: "enforced".to_string(),
-            degraded: false,
-        },
-        "full" => EffectiveNetwork {
-            requested: "full".to_string(),
-            actual: "full".to_string(),
-            enforcement: "none".to_string(),
-            degraded: false,
-        },
-        "allowlist" => EffectiveNetwork {
-            requested: "allowlist".to_string(),
-            actual: "full".to_string(),
-            enforcement: "observed".to_string(),
-            degraded: true,
-        },
-        _ => EffectiveNetwork {
-            requested: plan.policy.network.mode.clone(),
-            actual: "full".to_string(),
-            enforcement: "none".to_string(),
-            degraded: false,
-        },
+    let has_net_namespace = plan.policy.namespaces.iter().any(|ns| ns == "net");
+    let bwrap_available = matches!(bwrap, BwrapAvailability::Available { .. });
+
+    let (effective_network, resolved_allowlist) = match plan.policy.network.mode.as_str() {
+        "off" => {
+            let enforcement = if bwrap_available && has_net_namespace {
+                "enforced"
+            } else {
+                "best_effort"
+            };
+            let degraded = enforcement != "enforced";
+            (
+                EffectiveNetwork {
+                    requested: "off".to_string(),
+                    actual: "off".to_string(),
+                    enforcement: enforcement.to_string(),
+                    degraded,
+                },
+                vec![],
+            )
+        }
+        "full" => (
+            EffectiveNetwork {
+                requested: "full".to_string(),
+                actual: "full".to_string(),
+                enforcement: "observed".to_string(),
+                degraded: false,
+            },
+            vec![],
+        ),
+        "allowlist" => {
+            let allowlist_hosts = plan
+                .policy
+                .network
+                .allowlist
+                .as_deref()
+                .unwrap_or(&[]);
+
+            // Resolve DNS for each hostname
+            let mut entries: Vec<ResolvedAllowlistEntry> = Vec::new();
+            for hostname in allowlist_hosts {
+                let ips = resolve_hostname(hostname);
+                let resolved = !ips.is_empty();
+                if !resolved {
+                    warnings.push(ValidationWarning {
+                        code: "DNS_RESOLUTION_PARTIAL".to_string(),
+                        message: format!(
+                            "Failed to resolve allowlist hostname '{hostname}'"
+                        ),
+                    });
+                }
+                entries.push(ResolvedAllowlistEntry {
+                    hostname: hostname.clone(),
+                    ips,
+                    resolved,
+                });
+            }
+
+            let any_resolved = entries.iter().any(|e| e.resolved);
+            let iptables_path = detect_iptables();
+
+            let can_enforce = bwrap_available
+                && has_net_namespace
+                && any_resolved
+                && iptables_path.is_some();
+
+            if !bwrap_available || !has_net_namespace {
+                warnings.push(ValidationWarning {
+                    code: "ALLOWLIST_NOT_ENFORCED".to_string(),
+                    message:
+                        "Network allowlist requested but cannot be enforced; running in observed mode"
+                            .to_string(),
+                });
+            } else if iptables_path.is_none() {
+                warnings.push(ValidationWarning {
+                    code: "IPTABLES_NOT_FOUND".to_string(),
+                    message:
+                        "iptables binary not found on host; allowlist degraded to full/observed"
+                            .to_string(),
+                });
+            } else if !any_resolved {
+                warnings.push(ValidationWarning {
+                    code: "ALLOWLIST_DNS_FAILED".to_string(),
+                    message:
+                        "All allowlist hostnames failed DNS resolution; degraded to full/observed"
+                            .to_string(),
+                });
+            }
+
+            if can_enforce {
+                (
+                    EffectiveNetwork {
+                        requested: "allowlist".to_string(),
+                        actual: "allowlist".to_string(),
+                        enforcement: "enforced".to_string(),
+                        degraded: false,
+                    },
+                    entries,
+                )
+            } else {
+                (
+                    EffectiveNetwork {
+                        requested: "allowlist".to_string(),
+                        actual: "full".to_string(),
+                        enforcement: "observed".to_string(),
+                        degraded: true,
+                    },
+                    entries,
+                )
+            }
+        }
+        _ => (
+            EffectiveNetwork {
+                requested: plan.policy.network.mode.clone(),
+                actual: "full".to_string(),
+                enforcement: "none".to_string(),
+                degraded: false,
+            },
+            vec![],
+        ),
     };
 
-    // 6. Allowlist-degraded warning
-    if effective_network.degraded {
-        warnings.push(ValidationWarning {
-            code: "ALLOWLIST_NOT_ENFORCED".to_string(),
-            message:
-                "Network allowlist requested but cannot be enforced; running in observed mode"
-                    .to_string(),
-        });
-    }
-
-    // 7. Resolve namespaces based on bwrap availability
+    // 6. Resolve namespaces based on bwrap availability
     let namespaces_applied = match bwrap {
         BwrapAvailability::Available { .. } => {
             plan.policy.namespaces.clone()
@@ -125,7 +251,7 @@ pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayl
         }
     };
 
-    // 8. Resolve applied environment keys
+    // 7. Resolve applied environment keys
     let env_applied: Vec<String> = if let Some(allowlist) = &plan.policy.env_allowlist {
         plan.manifest
             .env
@@ -141,7 +267,7 @@ pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayl
         network: effective_network,
         namespaces_applied,
         env_applied,
-        resolved_allowlist: vec![],
+        resolved_allowlist,
     });
 
     ValidationPayload {
