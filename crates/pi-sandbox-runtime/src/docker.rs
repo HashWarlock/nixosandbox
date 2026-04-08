@@ -1,4 +1,204 @@
+use std::process::{Command, Stdio};
+
 use crate::contract::PlanPayload;
+
+const SIDECAR_NAME: &str = "pi-sandbox-sidecar";
+const IMAGE_NAME: &str = "pi-sandbox-base:latest";
+const CONTAINER_SESSIONS_DIR: &str = "/pi-sandbox";
+
+/// Information about a running Docker sidecar container.
+pub struct DockerSidecar {
+    pub container_id: String,
+    pub host_sessions_dir: String,
+    pub container_sessions_dir: String,
+}
+
+/// Get the pi-sandbox data directory on the host.
+///
+/// Uses `PI_SANDBOX_DATA_DIR` env var if set, otherwise `$HOME/.local/share/pi-sandbox`.
+fn get_data_dir() -> Result<String, String> {
+    if let Ok(dir) = std::env::var("PI_SANDBOX_DATA_DIR") {
+        return Ok(dir);
+    }
+    let home = std::env::var("HOME")
+        .map_err(|_| "HOME environment variable not set".to_string())?;
+    Ok(format!("{home}/.local/share/pi-sandbox"))
+}
+
+/// Check whether Docker is available by running `docker info`.
+pub fn is_docker_available() -> bool {
+    Command::new("docker")
+        .args(["info"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Find a running sidecar container. Returns its short ID if found.
+fn find_running_sidecar() -> Option<String> {
+    let output = Command::new("docker")
+        .args([
+            "ps",
+            "--filter", &format!("name={SIDECAR_NAME}"),
+            "--format", "{{.ID}}",
+        ])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if id.is_empty() { None } else { Some(id) }
+    } else {
+        None
+    }
+}
+
+/// Find a stopped sidecar container. Returns its short ID if found.
+fn find_stopped_sidecar() -> Option<String> {
+    let output = Command::new("docker")
+        .args([
+            "ps", "-a",
+            "--filter", &format!("name={SIDECAR_NAME}"),
+            "--format", "{{.ID}}",
+        ])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if id.is_empty() { None } else { Some(id) }
+    } else {
+        None
+    }
+}
+
+/// Start a stopped container.
+fn start_container(id: &str) -> Result<(), String> {
+    let status = Command::new("docker")
+        .args(["start", id])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| format!("failed to start container: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("docker start failed".to_string())
+    }
+}
+
+/// Build the sidecar Docker image if it doesn't already exist.
+fn ensure_image() -> Result<(), String> {
+    let output = Command::new("docker")
+        .args(["images", IMAGE_NAME, "--format", "{{.ID}}"])
+        .output()
+        .map_err(|e| format!("docker images check failed: {e}"))?;
+
+    let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !id.is_empty() {
+        return Ok(());
+    }
+
+    eprintln!("pi-sandbox: building Docker sidecar image (one-time setup)...");
+    let status = Command::new("docker")
+        .args([
+            "build", "-t", IMAGE_NAME,
+            "-f", "docker/pi-sandbox-sidecar.Dockerfile", ".",
+        ])
+        .status()
+        .map_err(|e| format!("docker build failed: {e}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err("docker build failed with non-zero exit".to_string())
+    }
+}
+
+/// Create and start a new sidecar container.
+fn create_sidecar(host_sessions_dir: &str) -> Result<String, String> {
+    let volume_arg = format!("{host_sessions_dir}:{CONTAINER_SESSIONS_DIR}");
+    let output = Command::new("docker")
+        .args([
+            "run", "-d",
+            "--name", SIDECAR_NAME,
+            "--cap-add", "SYS_ADMIN",
+            "--cap-add", "NET_ADMIN",
+            "-v", &volume_arg,
+            IMAGE_NAME,
+            "sleep", "infinity",
+        ])
+        .output()
+        .map_err(|e| format!("docker run failed: {e}"))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("docker run failed: {stderr}"))
+    }
+}
+
+/// Detect and ensure a Docker sidecar is running.
+///
+/// This is the main entry point called from `bubblewrap::detect()` on macOS.
+/// Returns a `DockerSidecar` with container info and path mapping,
+/// or an error string explaining why Docker is not available.
+pub fn detect_docker_sidecar() -> Result<DockerSidecar, String> {
+    if !is_docker_available() {
+        return Err("Docker not available (docker info failed)".to_string());
+    }
+
+    let host_sessions_dir = get_data_dir()?;
+
+    // Ensure the data directory exists on the host
+    std::fs::create_dir_all(&host_sessions_dir)
+        .map_err(|e| format!("failed to create data dir {host_sessions_dir}: {e}"))?;
+
+    // 1. Check if container is already running
+    if let Some(id) = find_running_sidecar() {
+        return Ok(DockerSidecar {
+            container_id: id,
+            host_sessions_dir,
+            container_sessions_dir: CONTAINER_SESSIONS_DIR.to_string(),
+        });
+    }
+
+    // 2. Check if container exists but is stopped
+    if let Some(id) = find_stopped_sidecar() {
+        start_container(&id)?;
+        return Ok(DockerSidecar {
+            container_id: id,
+            host_sessions_dir,
+            container_sessions_dir: CONTAINER_SESSIONS_DIR.to_string(),
+        });
+    }
+
+    // 3. Container doesn't exist — build image and create it
+    ensure_image()?;
+    let id = create_sidecar(&host_sessions_dir)?;
+
+    Ok(DockerSidecar {
+        container_id: id,
+        host_sessions_dir,
+        container_sessions_dir: CONTAINER_SESSIONS_DIR.to_string(),
+    })
+}
+
+/// Restart the sidecar container after a failure.
+pub fn restart_sidecar(container_id: &str) -> Result<(), String> {
+    let status = Command::new("docker")
+        .args(["restart", container_id])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|e| format!("docker restart failed: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("docker restart failed".to_string())
+    }
+}
 
 /// Rewrite a single host path to its container-side equivalent.
 ///
