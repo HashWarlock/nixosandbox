@@ -35,7 +35,9 @@ export type WarningCode =
   | "DNS_RESOLUTION_PARTIAL"
   | "ALLOWLIST_DNS_FAILED"
   | "ENFORCEMENT_LEAK"
-  | "IPTABLES_NOT_FOUND";
+  | "IPTABLES_NOT_FOUND"
+  | "DOCKER_NOT_AVAILABLE"
+  | "DOCKER_SIDECAR_RESTARTED";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -150,6 +152,19 @@ export const EffectiveStateSchema = Type.Object({
   network: EffectiveNetworkSchema,
   namespacesApplied: Type.Array(Type.String()),
   envApplied: Type.Array(Type.String()),
+  resolvedAllowlist: Type.Optional(
+    Type.Array(
+      Type.Object({
+        original: Type.String(),
+        resolved: Type.Array(Type.String()),
+      })
+    )
+  ),
+  isolationBackend: Type.Union([
+    Type.Literal("native"),
+    Type.Literal("docker"),
+    Type.Literal("none"),
+  ]),
 });
 export type EffectiveState = Static<typeof EffectiveStateSchema>;
 
