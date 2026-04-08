@@ -4,6 +4,11 @@ use std::path::PathBuf;
 #[derive(Debug, Clone)]
 pub enum BwrapAvailability {
     Available { path: PathBuf },
+    DockerAvailable {
+        container_id: String,
+        host_sessions_dir: String,
+        container_sessions_dir: String,
+    },
     Unavailable { reason: String },
 }
 
@@ -69,11 +74,13 @@ mod tests {
 
     #[test]
     fn detect_returns_a_result() {
-        // On any platform, detect() must return without panicking.
         let result = detect();
         match &result {
             BwrapAvailability::Available { path } => {
                 assert!(path.exists());
+            }
+            BwrapAvailability::DockerAvailable { container_id, .. } => {
+                assert!(!container_id.is_empty());
             }
             BwrapAvailability::Unavailable { reason } => {
                 assert!(!reason.is_empty());
@@ -91,6 +98,9 @@ mod tests {
             }
             BwrapAvailability::Available { .. } => {
                 panic!("Should not be available on non-Linux");
+            }
+            BwrapAvailability::DockerAvailable { .. } => {
+                panic!("DockerAvailable should not be returned by detect() on non-Linux (Task 7 not yet wired)");
             }
         }
     }

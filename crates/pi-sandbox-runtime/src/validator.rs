@@ -111,7 +111,10 @@ pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayl
 
     // 5. Resolve effective network
     let has_net_namespace = plan.policy.namespaces.iter().any(|ns| ns == "net");
-    let bwrap_available = matches!(bwrap, BwrapAvailability::Available { .. });
+    let bwrap_available = matches!(
+        bwrap,
+        BwrapAvailability::Available { .. } | BwrapAvailability::DockerAvailable { .. }
+    );
 
     let (effective_network, resolved_allowlist) = match plan.policy.network.mode.as_str() {
         "off" => {
@@ -234,7 +237,7 @@ pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayl
 
     // 6. Resolve namespaces based on bwrap availability
     let namespaces_applied = match bwrap {
-        BwrapAvailability::Available { .. } => {
+        BwrapAvailability::Available { .. } | BwrapAvailability::DockerAvailable { .. } => {
             plan.policy.namespaces.clone()
         }
         BwrapAvailability::Unavailable { .. } => {
@@ -265,8 +268,19 @@ pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayl
 
     let isolation_backend = match bwrap {
         BwrapAvailability::Available { .. } => "native".to_string(),
+        BwrapAvailability::DockerAvailable { .. } => "docker".to_string(),
         BwrapAvailability::Unavailable { .. } => "none".to_string(),
     };
+
+    // On non-Linux, if bwrap is unavailable (Docker not found), emit a warning
+    #[cfg(not(target_os = "linux"))]
+    if matches!(bwrap, BwrapAvailability::Unavailable { .. }) {
+        warnings.push(ValidationWarning {
+            code: "DOCKER_NOT_AVAILABLE".to_string(),
+            message: "macOS detected but Docker not available; running without isolation"
+                .to_string(),
+        });
+    }
 
     let effective_state = Some(EffectiveState {
         network: effective_network,

@@ -90,6 +90,18 @@ pub fn supervise(
                 c
             }
         }
+        BwrapAvailability::DockerAvailable { .. } => {
+            // Placeholder: Docker execution implemented in Task 8.
+            // This arm is unreachable until the detection chain (Task 7)
+            // returns DockerAvailable. Falls through to direct execution.
+            let mut c = Command::new(&plan.command[0]);
+            if plan.command.len() > 1 {
+                c.args(&plan.command[1..]);
+            }
+            c.current_dir(&plan.manifest.cwd)
+                .envs(&plan.manifest.env);
+            c
+        }
         BwrapAvailability::Unavailable { .. } => {
             let mut c = Command::new(&plan.command[0]);
             if plan.command.len() > 1 {
