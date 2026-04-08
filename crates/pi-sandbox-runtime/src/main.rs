@@ -1,5 +1,6 @@
 mod bubblewrap;
 mod contract;
+mod docker;
 mod observer;
 mod plan_builder;
 mod supervisor;
