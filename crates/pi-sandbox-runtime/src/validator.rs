@@ -263,11 +263,17 @@ pub fn validate(plan: &PlanPayload, bwrap: &BwrapAvailability) -> ValidationPayl
         plan.manifest.env.keys().cloned().collect()
     };
 
+    let isolation_backend = match bwrap {
+        BwrapAvailability::Available { .. } => "native".to_string(),
+        BwrapAvailability::Unavailable { .. } => "none".to_string(),
+    };
+
     let effective_state = Some(EffectiveState {
         network: effective_network,
         namespaces_applied,
         env_applied,
         resolved_allowlist,
+        isolation_backend,
     });
 
     ValidationPayload {

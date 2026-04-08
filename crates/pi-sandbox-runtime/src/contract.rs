@@ -16,7 +16,7 @@ pub enum InboundMessage {
     Cancel { payload: CancelPayload },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanPayload {
     pub version: u32,
@@ -29,7 +29,7 @@ pub struct PlanPayload {
     pub command: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     pub mounts: Vec<Mount>,
@@ -37,7 +37,7 @@ pub struct Manifest {
     pub cwd: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Mount {
     #[serde(rename = "type")]
@@ -47,7 +47,7 @@ pub struct Mount {
     pub writable: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Policy {
     pub namespaces: Vec<String>,
@@ -59,14 +59,14 @@ pub struct Policy {
     pub deny_commands: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkConfig {
     pub mode: String,
     pub allowlist: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceLimits {
     pub max_cpu_seconds: Option<f64>,
@@ -75,7 +75,7 @@ pub struct ResourceLimits {
     pub max_output_bytes: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelPayload {
     pub reason: Option<String>,
@@ -139,6 +139,7 @@ pub struct EffectiveState {
     pub namespaces_applied: Vec<String>,
     pub env_applied: Vec<String>,
     pub resolved_allowlist: Vec<ResolvedAllowlistEntry>,
+    pub isolation_backend: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
