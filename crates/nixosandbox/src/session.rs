@@ -24,7 +24,6 @@ pub struct SessionDirs {
     pub workspace: PathBuf,
     pub home: PathBuf,
     pub cache: PathBuf,
-    pub logs: PathBuf,
     pub metadata_path: PathBuf,
 }
 
@@ -51,10 +50,8 @@ pub fn create_session(
     fs::create_dir_all(&session_dir).map_err(|e| format!("failed to create session dir: {e}"))?;
     let home_dir = session_dir.join("home");
     let cache_dir = session_dir.join("cache");
-    let logs_dir = session_dir.join("logs");
     fs::create_dir_all(&home_dir).map_err(|e| format!("failed to create home dir: {e}"))?;
     fs::create_dir_all(&cache_dir).map_err(|e| format!("failed to create cache dir: {e}"))?;
-    fs::create_dir_all(&logs_dir).map_err(|e| format!("failed to create logs dir: {e}"))?;
 
     let workspace_dir = session_dir.join("workspace");
     let workspace_path = if let Some(ws) = workspace {
@@ -119,7 +116,7 @@ pub fn session_dirs(session_id: &str) -> SessionDirs {
     let root = sessions_base_dir().join(session_id);
     SessionDirs {
         workspace: root.join("workspace"), home: root.join("home"),
-        cache: root.join("cache"), logs: root.join("logs"),
+        cache: root.join("cache"),
         metadata_path: root.join("metadata.json"), root,
     }
 }

@@ -1,9 +1,7 @@
 mod bubblewrap;
 mod cli;
-mod contract;
 mod docker;
 mod nix;
-mod observer;
 mod plan_builder;
 mod session;
 mod spec;
