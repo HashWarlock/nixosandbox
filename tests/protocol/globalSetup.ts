@@ -16,9 +16,9 @@ export async function setup() {
     throw new Error(`Binary not found at ${binaryPath}`);
   }
 
-  process.env.RUNTIME_BINARY_PATH = binaryPath;
-  // Disable Docker sidecar for non-Docker tests (existing tests expect no-isolation behavior on macOS).
-  // Docker-specific tests (docker-sidecar.test.ts) override this via spawnRuntime({ env }).
-  process.env.PI_SANDBOX_NO_DOCKER = "1";
+  process.env.NIXOSANDBOX_BINARY = binaryPath;
+  // Disable Docker sidecar for non-Docker tests.
+  // Docker-specific tests override this via their own env.
+  process.env.NIXOSANDBOX_NO_DOCKER = "1";
   console.log(`Runtime binary: ${binaryPath}`);
 }

@@ -11,17 +11,41 @@ export interface TestRuntime {
   process: ChildProcess;
 }
 
-export function spawnRuntime(options?: { env?: NodeJS.ProcessEnv }): TestRuntime {
-  const binaryPath = process.env.RUNTIME_BINARY_PATH;
+/**
+ * Spawn `nixosandbox exec --json <sessionId> -- <command>` and return
+ * a TestRuntime that reads NDJSON events from stdout.
+ */
+export function spawnExecJson(
+  sessionId: string,
+  command: string[],
+  options?: { env?: NodeJS.ProcessEnv; extraArgs?: string[] },
+): TestRuntime {
+  const binaryPath = process.env.NIXOSANDBOX_BINARY;
   if (!binaryPath) {
-    throw new Error("RUNTIME_BINARY_PATH not set. Did globalSetup run?");
+    throw new Error("NIXOSANDBOX_BINARY not set. Did globalSetup run?");
   }
 
-  const child = spawn(binaryPath, ["legacy-ndjson"], {
+  const args = [
+    "exec",
+    "--json",
+    ...(options?.extraArgs ?? []),
+    sessionId,
+    "--",
+    ...command,
+  ];
+
+  const child = spawn(binaryPath, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: options?.env ?? process.env,
   });
 
+  return wrapChildProcess(child);
+}
+
+/**
+ * Wrap a ChildProcess into a TestRuntime for NDJSON event reading.
+ */
+function wrapChildProcess(child: ChildProcess): TestRuntime {
   const rl = createInterface({ input: child.stdout! });
   const lineQueue: string[] = [];
   let lineResolve: ((line: string) => void) | null = null;
@@ -70,6 +94,7 @@ export function spawnRuntime(options?: { env?: NodeJS.ProcessEnv }): TestRuntime
 
     async readline(): Promise<Record<string, unknown>> {
       const line = await nextLine();
+      if (!line) throw new Error("Empty line received");
       return JSON.parse(line) as Record<string, unknown>;
     },
 
@@ -82,6 +107,7 @@ export function spawnRuntime(options?: { env?: NodeJS.ProcessEnv }): TestRuntime
         } catch {
           break;
         }
+        if (!line) break;
         const parsed = JSON.parse(line) as Record<string, unknown>;
         events.push(parsed);
         if (parsed.type === "result") {
@@ -115,96 +141,4 @@ export function spawnRuntime(options?: { env?: NodeJS.ProcessEnv }): TestRuntime
   };
 
   return runtime;
-}
-
-export function makePlan(overrides?: {
-  version?: number;
-  sessionId?: string;
-  executionId?: string;
-  requestedProfile?: string;
-  runtimeBaseName?: string;
-  manifest?: {
-    mounts?: Array<{
-      type: string;
-      source?: string;
-      target: string;
-      writable: boolean;
-    }>;
-    env?: Record<string, string>;
-    cwd?: string;
-  };
-  policy?: {
-    namespaces?: string[];
-    network?: {
-      mode: string;
-      allowlist?: string[];
-    };
-    resourceLimits?: Record<string, number>;
-    allowedWritableTargets?: string[];
-    strictWritePolicy?: boolean;
-    envAllowlist?: string[];
-    denyCommands?: string[];
-  };
-  command?: string[];
-}): Record<string, unknown> {
-  const defaults = {
-    version: 1,
-    sessionId: "test-session-001",
-    executionId: "test-exec-001",
-    requestedProfile: "build-install",
-    runtimeBaseName: "host-derived",
-    manifest: {
-      mounts: [
-        {
-          type: "directory",
-          source: "/tmp/pi-sandbox-test/workspace",
-          target: "/workspace",
-          writable: true,
-        },
-        {
-          type: "tmpfs",
-          target: "/tmp",
-          writable: true,
-        },
-      ],
-      env: {
-        HOME: "/home/sandbox",
-        PATH: "/usr/bin:/bin",
-      },
-      cwd: "/tmp/pi-sandbox-test/workspace",
-    },
-    policy: {
-      namespaces: ["user", "pid"],
-      network: {
-        mode: "full",
-      },
-      allowedWritableTargets: ["/workspace", "/tmp"],
-      strictWritePolicy: false,
-      envAllowlist: ["HOME", "PATH"],
-      denyCommands: [],
-    },
-    command: ["echo", "hello"],
-  };
-
-  const merged = {
-    ...defaults,
-    ...overrides,
-    manifest: {
-      ...defaults.manifest,
-      ...overrides?.manifest,
-    },
-    policy: {
-      ...defaults.policy,
-      ...overrides?.policy,
-      network: {
-        ...defaults.policy.network,
-        ...overrides?.policy?.network,
-      },
-    },
-  };
-
-  return {
-    type: "plan",
-    payload: merged,
-  };
 }
