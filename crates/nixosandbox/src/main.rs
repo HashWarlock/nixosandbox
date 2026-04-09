@@ -4,6 +4,7 @@ mod contract;
 mod docker;
 mod observer;
 mod plan_builder;
+mod session;
 mod spec;
 mod supervisor;
 mod timestamps;
