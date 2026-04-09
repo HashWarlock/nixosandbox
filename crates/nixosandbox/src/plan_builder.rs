@@ -11,7 +11,7 @@ pub fn build_rootfs(
     session_dirs: &RootfsSessionDirs,
     command: &[String],
     env: &std::collections::HashMap<String, String>,
-    network: &str,
+    _network: &str,
     namespaces: &[String],
 ) -> Vec<String> {
     let mut argv: Vec<String> = Vec::new();

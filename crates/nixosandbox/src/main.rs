@@ -459,7 +459,12 @@ fn cmd_status(session_id: &str, json: bool) {
         println!("{}", serde_json::to_string_pretty(&status).unwrap());
     } else {
         let truncate = |s: &str, max: usize| -> String {
-            if s.len() > max { format!("{}...", &s[..max-3]) } else { s.to_string() }
+            if s.chars().count() > max {
+                let truncated: String = s.chars().take(max - 3).collect();
+                format!("{truncated}...")
+            } else {
+                s.to_string()
+            }
         };
 
         let desc = meta.description.as_deref().unwrap_or("-");

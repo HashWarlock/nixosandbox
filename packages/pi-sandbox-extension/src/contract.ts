@@ -5,8 +5,7 @@
  * Protocol version: 1
  *
  * This file defines the TypeBox schemas and TypeScript interfaces for
- * outbound messages received from the Rust sandbox supervisor via
- * `nixosandbox exec --json` NDJSON output.
+ * outbound messages received from `nixosandbox exec --json` NDJSON output.
  */
 
 import { Type, type Static } from "@sinclair/typebox";
