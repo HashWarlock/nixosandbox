@@ -56,6 +56,8 @@ export type {
   StatusResponse,
   ExecResult,
   CreateOptions,
+  CatalogEntry,
+  CatalogResponse,
 } from "./cli-client.js";
 export {
   createSession,
@@ -63,4 +65,5 @@ export {
   listSessions,
   destroySession,
   execCommand,
+  catalogPackages,
 } from "./cli-client.js";
