@@ -23,9 +23,30 @@ pub enum BwrapAvailability {
 pub fn detect() -> BwrapAvailability {
     #[cfg(not(target_os = "linux"))]
     {
-        return BwrapAvailability::Unavailable {
-            reason: "Bubblewrap requires Linux".to_string(),
-        };
+        // Check opt-out env var
+        if std::env::var("PI_SANDBOX_NO_DOCKER").map_or(false, |v| v == "1") {
+            return BwrapAvailability::Unavailable {
+                reason: "Docker fallback disabled via PI_SANDBOX_NO_DOCKER=1".to_string(),
+            };
+        }
+
+        // Try Docker sidecar for bwrap support on macOS
+        match crate::docker::detect_docker_sidecar() {
+            Ok(sidecar) => {
+                return BwrapAvailability::DockerAvailable {
+                    container_id: sidecar.container_id,
+                    host_sessions_dir: sidecar.host_sessions_dir,
+                    container_sessions_dir: sidecar.container_sessions_dir,
+                };
+            }
+            Err(reason) => {
+                return BwrapAvailability::Unavailable {
+                    reason: format!(
+                        "Bubblewrap requires Linux; Docker fallback failed: {reason}"
+                    ),
+                };
+            }
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -90,17 +111,17 @@ mod tests {
 
     #[test]
     #[cfg(not(target_os = "linux"))]
-    fn non_linux_always_unavailable() {
+    fn non_linux_returns_docker_or_unavailable() {
         let result = detect();
         match result {
             BwrapAvailability::Unavailable { reason } => {
-                assert!(reason.contains("Linux"), "reason: {}", reason);
+                assert!(!reason.is_empty(), "reason: {}", reason);
+            }
+            BwrapAvailability::DockerAvailable { container_id, .. } => {
+                assert!(!container_id.is_empty());
             }
             BwrapAvailability::Available { .. } => {
-                panic!("Should not be available on non-Linux");
-            }
-            BwrapAvailability::DockerAvailable { .. } => {
-                panic!("DockerAvailable should not be returned by detect() on non-Linux (Task 7 not yet wired)");
+                panic!("Should not return native Available on non-Linux");
             }
         }
     }
