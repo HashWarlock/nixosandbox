@@ -12,6 +12,7 @@ use crate::contract::{
 };
 use crate::observer::{compute_would_have_blocked, NetworkObserver};
 use crate::plan_builder;
+use crate::docker;
 
 pub struct SupervisionResult {
     pub exit_code: Option<i32>,
@@ -23,6 +24,64 @@ pub struct SupervisionResult {
     pub would_have_blocked: Vec<crate::contract::BlockedConnection>,
     pub terminal_state: String,
     pub workspace_modified: bool,
+}
+
+/// Build a Command for Docker-based bwrap execution.
+///
+/// Rewrites plan paths from host to container, builds bwrap argv via plan_builder,
+/// and prefixes with `docker exec -i <container_id> bwrap`.
+fn build_docker_command(
+    plan: &PlanPayload,
+    effective_state: &EffectiveState,
+    container_id: &str,
+    host_sessions_dir: &str,
+    container_sessions_dir: &str,
+) -> Command {
+    let rewritten_plan = docker::rewrite_plan(plan, host_sessions_dir, container_sessions_dir);
+
+    // Inside the Docker container, iptables is always at /usr/sbin/iptables
+    let iptables_path = if effective_state.network.actual == "allowlist"
+        && effective_state.network.enforcement == "enforced"
+    {
+        Some("/usr/sbin/iptables".to_string())
+    } else {
+        None
+    };
+
+    let argv = plan_builder::build_with_allowlist(
+        &rewritten_plan,
+        effective_state,
+        iptables_path.as_deref(),
+    );
+
+    // If allowlist enforcement is active, write the wrapper script to the sessions dir
+    // (which is mounted in the container) so bwrap can bind-mount it
+    let full_argv = if effective_state.network.actual == "allowlist"
+        && effective_state.network.enforcement == "enforced"
+    {
+        let script = plan_builder::generate_iptables_wrapper(&effective_state.resolved_allowlist);
+        let host_script_dir = format!("{host_sessions_dir}/tmp");
+        let host_script_path = format!("{host_script_dir}/.pi-sandbox-allowlist.sh");
+        let container_script_path =
+            format!("{container_sessions_dir}/tmp/.pi-sandbox-allowlist.sh");
+        std::fs::create_dir_all(&host_script_dir).ok();
+        std::fs::write(&host_script_path, &script).expect("failed to write iptables wrapper");
+
+        let mut full = vec![
+            "--ro-bind".to_string(),
+            container_script_path,
+            "/tmp/.pi-sandbox-allowlist.sh".to_string(),
+        ];
+        full.extend(argv);
+        full
+    } else {
+        argv
+    };
+
+    let mut cmd = Command::new("docker");
+    cmd.args(["exec", "-i", container_id, "bwrap"]);
+    cmd.args(&full_argv);
+    cmd
 }
 
 /// Supervise execution of the plan's command.
@@ -90,18 +149,17 @@ pub fn supervise(
                 c
             }
         }
-        BwrapAvailability::DockerAvailable { .. } => {
-            // Placeholder: Docker execution implemented in Task 8.
-            // This arm is unreachable until the detection chain (Task 7)
-            // returns DockerAvailable. Falls through to direct execution.
-            let mut c = Command::new(&plan.command[0]);
-            if plan.command.len() > 1 {
-                c.args(&plan.command[1..]);
-            }
-            c.current_dir(&plan.manifest.cwd)
-                .envs(&plan.manifest.env);
-            c
-        }
+        BwrapAvailability::DockerAvailable {
+            ref container_id,
+            ref host_sessions_dir,
+            ref container_sessions_dir,
+        } => build_docker_command(
+            plan,
+            effective_state,
+            container_id,
+            host_sessions_dir,
+            container_sessions_dir,
+        ),
         BwrapAvailability::Unavailable { .. } => {
             let mut c = Command::new(&plan.command[0]);
             if plan.command.len() > 1 {
@@ -118,23 +176,89 @@ pub fn supervise(
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            let seq_val = next_seq(&seq);
-            emit(&LifecycleEnvelope::new(
-                seq_val,
-                format!("spawn_failed: {e}"),
-            ));
-            let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
-            return SupervisionResult {
-                exit_code: None,
-                signal: None,
-                timed_out: false,
-                duration_ms,
-                effective_network: effective_state.network.clone(),
-                observed_connections: vec![],
-                would_have_blocked: vec![],
-                terminal_state: "supervisor_crash".to_string(),
-                workspace_modified: false,
-            };
+            // For Docker: if spawn failed, try restarting the sidecar once
+            if let BwrapAvailability::DockerAvailable {
+                ref container_id,
+                ref host_sessions_dir,
+                ref container_sessions_dir,
+            } = bwrap
+            {
+                let seq_val = next_seq(&seq);
+                emit(&WarningEnvelope::new(
+                    seq_val,
+                    "DOCKER_SIDECAR_RESTARTED".to_string(),
+                    format!("docker exec failed ({e}), restarting sidecar"),
+                ));
+
+                if docker::restart_sidecar(container_id).is_ok() {
+                    let mut retry_cmd = build_docker_command(
+                        plan,
+                        effective_state,
+                        container_id,
+                        host_sessions_dir,
+                        container_sessions_dir,
+                    );
+                    retry_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+                    match retry_cmd.spawn() {
+                        Ok(c) => c,
+                        Err(e2) => {
+                            let s = next_seq(&seq);
+                            emit(&LifecycleEnvelope::new(
+                                s,
+                                format!("spawn_failed_after_recovery: {e2}"),
+                            ));
+                            let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                            return SupervisionResult {
+                                exit_code: None,
+                                signal: None,
+                                timed_out: false,
+                                duration_ms,
+                                effective_network: effective_state.network.clone(),
+                                observed_connections: vec![],
+                                would_have_blocked: vec![],
+                                terminal_state: "supervisor_crash".to_string(),
+                                workspace_modified: false,
+                            };
+                        }
+                    }
+                } else {
+                    let s = next_seq(&seq);
+                    emit(&LifecycleEnvelope::new(
+                        s,
+                        format!("spawn_failed: {e} (sidecar restart also failed)"),
+                    ));
+                    let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    return SupervisionResult {
+                        exit_code: None,
+                        signal: None,
+                        timed_out: false,
+                        duration_ms,
+                        effective_network: effective_state.network.clone(),
+                        observed_connections: vec![],
+                        would_have_blocked: vec![],
+                        terminal_state: "supervisor_crash".to_string(),
+                        workspace_modified: false,
+                    };
+                }
+            } else {
+                let seq_val = next_seq(&seq);
+                emit(&LifecycleEnvelope::new(
+                    seq_val,
+                    format!("spawn_failed: {e}"),
+                ));
+                let duration_ms = start.elapsed().as_secs_f64() * 1000.0;
+                return SupervisionResult {
+                    exit_code: None,
+                    signal: None,
+                    timed_out: false,
+                    duration_ms,
+                    effective_network: effective_state.network.clone(),
+                    observed_connections: vec![],
+                    would_have_blocked: vec![],
+                    terminal_state: "supervisor_crash".to_string(),
+                    workspace_modified: false,
+                };
+            }
         }
     };
 
