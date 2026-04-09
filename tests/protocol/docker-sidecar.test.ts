@@ -13,6 +13,9 @@ import { spawnRuntime, makePlan } from "./helpers.js";
 
 const DOCKER_TESTS = process.env.RUN_DOCKER_TESTS === "1";
 
+// Docker tests need PI_SANDBOX_NO_DOCKER unset (globalSetup sets it to "1" for non-Docker tests)
+const dockerEnv = { ...process.env, PI_SANDBOX_NO_DOCKER: undefined } as NodeJS.ProcessEnv;
+
 describe.skipIf(!DOCKER_TESTS)("Docker sidecar", () => {
   beforeAll(() => {
     // Clean up any leftover sidecar from previous runs
@@ -26,7 +29,7 @@ describe.skipIf(!DOCKER_TESTS)("Docker sidecar", () => {
   });
 
   it("runs echo through Docker+bwrap and reports isolationBackend=docker", async () => {
-    const rt = spawnRuntime();
+    const rt = spawnRuntime({ env: dockerEnv });
     const plan = makePlan({
       command: ["echo", "hello from docker sidecar"],
     });
@@ -55,7 +58,7 @@ describe.skipIf(!DOCKER_TESTS)("Docker sidecar", () => {
   }, 60_000); // 60s timeout for first-time image build
 
   it("reports enforcement=enforced for network=off", async () => {
-    const rt = spawnRuntime();
+    const rt = spawnRuntime({ env: dockerEnv });
     const plan = makePlan({
       command: ["echo", "offline test"],
       policy: {

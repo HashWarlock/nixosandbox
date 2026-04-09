@@ -124,6 +124,7 @@ fn create_sidecar(host_sessions_dir: &str) -> Result<String, String> {
             "--name", SIDECAR_NAME,
             "--cap-add", "SYS_ADMIN",
             "--cap-add", "NET_ADMIN",
+            "--security-opt", "seccomp=unconfined",
             "-v", &volume_arg,
             IMAGE_NAME,
             "sleep", "infinity",

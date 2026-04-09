@@ -152,13 +152,12 @@ export const EffectiveStateSchema = Type.Object({
   network: EffectiveNetworkSchema,
   namespacesApplied: Type.Array(Type.String()),
   envApplied: Type.Array(Type.String()),
-  resolvedAllowlist: Type.Optional(
-    Type.Array(
-      Type.Object({
-        original: Type.String(),
-        resolved: Type.Array(Type.String()),
-      })
-    )
+  resolvedAllowlist: Type.Array(
+    Type.Object({
+      hostname: Type.String(),
+      ips: Type.Array(Type.String()),
+      resolved: Type.Boolean(),
+    })
   ),
   isolationBackend: Type.Union([
     Type.Literal("native"),

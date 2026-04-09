@@ -11,7 +11,7 @@ export interface TestRuntime {
   process: ChildProcess;
 }
 
-export function spawnRuntime(): TestRuntime {
+export function spawnRuntime(options?: { env?: NodeJS.ProcessEnv }): TestRuntime {
   const binaryPath = process.env.RUNTIME_BINARY_PATH;
   if (!binaryPath) {
     throw new Error("RUNTIME_BINARY_PATH not set. Did globalSetup run?");
@@ -19,6 +19,7 @@ export function spawnRuntime(): TestRuntime {
 
   const child = spawn(binaryPath, [], {
     stdio: ["pipe", "pipe", "pipe"],
+    env: options?.env ?? process.env,
   });
 
   const rl = createInterface({ input: child.stdout! });
