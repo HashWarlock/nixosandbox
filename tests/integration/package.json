@@ -1,12 +1,11 @@
 {
-  "name": "@pi-sandbox/integration-tests",
+  "name": "@nixosandbox/integration-tests",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest",
-    "test:network": "RUN_NETWORK_TESTS=1 vitest run network-smoke.test.ts"
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
