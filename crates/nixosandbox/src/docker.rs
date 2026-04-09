@@ -103,18 +103,21 @@ fn ensure_image() -> Result<(), String> {
     }
 
     eprintln!("nixosandbox: building Docker sidecar image (one-time setup)...");
-    let status = Command::new("docker")
+    let output = Command::new("docker")
         .args([
             "build", "-t", IMAGE_NAME,
             "-f", "docker/nixosandbox-sidecar.Dockerfile", ".",
         ])
-        .status()
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
         .map_err(|e| format!("docker build failed: {e}"))?;
 
-    if status.success() {
+    if output.status.success() {
         Ok(())
     } else {
-        Err("docker build failed with non-zero exit".to_string())
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("docker build failed: {}", stderr.trim()))
     }
 }
 

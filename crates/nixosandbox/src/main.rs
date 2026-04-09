@@ -184,11 +184,9 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
     });
 
     // Load the spec/profile to get network and namespace config.
-    // For --with sessions, use the stored network mode from metadata.
-    let sandbox_spec = spec::load_profile(&meta.profile, &flake_root).unwrap_or_else(|e| {
-        eprintln!("warning: could not load profile '{}': {e}", meta.profile);
-        // Fallback spec — use stored network mode from session metadata if available
-        let network = meta.network.clone().unwrap_or_else(|| "full".to_string());
+    // For --with sessions (profile starts with "custom:"), build spec from session metadata directly.
+    let sandbox_spec = if meta.profile.starts_with("custom:") {
+        let network = meta.network.clone().unwrap_or_else(|| "off".to_string());
         spec::SandboxSpec {
             name: meta.profile.clone(),
             packages: vec![],
@@ -197,7 +195,20 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
             namespaces: vec!["pid".to_string(), "mount".to_string(), "uts".to_string(), "ipc".to_string()],
             writable: vec!["/workspace".to_string(), "/home/sandbox".to_string(), "/cache".to_string(), "/tmp".to_string()],
         }
-    });
+    } else {
+        spec::load_profile(&meta.profile, &flake_root).unwrap_or_else(|e| {
+            eprintln!("warning: could not load profile '{}': {e}", meta.profile);
+            let network = meta.network.clone().unwrap_or_else(|| "full".to_string());
+            spec::SandboxSpec {
+                name: meta.profile.clone(),
+                packages: vec![],
+                env: std::collections::HashMap::new(),
+                network,
+                namespaces: vec!["pid".to_string(), "mount".to_string(), "uts".to_string(), "ipc".to_string()],
+                writable: vec!["/workspace".to_string(), "/home/sandbox".to_string(), "/cache".to_string(), "/tmp".to_string()],
+            }
+        })
+    };
 
     let dirs = session::session_dirs(session_id);
 
@@ -287,16 +298,20 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
                         std::process::exit(1);
                     })
             }
-            _ => {
-                Command::new("bwrap")
+            bubblewrap::BwrapAvailability::Available { path } => {
+                Command::new(path)
                     .args(&bwrap_argv)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .spawn()
                     .unwrap_or_else(|e| {
-                        eprintln!("error: failed to spawn bwrap: {e}");
+                        eprintln!("error: failed to spawn bwrap at {}: {e}", path.display());
                         std::process::exit(1);
                     })
+            }
+            bubblewrap::BwrapAvailability::Unavailable { reason } => {
+                eprintln!("error: bwrap is not available: {reason}");
+                std::process::exit(1);
             }
         };
 
@@ -416,14 +431,18 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
                         std::process::exit(1);
                     })
             }
-            _ => {
-                Command::new("bwrap")
+            bubblewrap::BwrapAvailability::Available { path } => {
+                Command::new(path)
                     .args(&bwrap_argv)
                     .status()
                     .unwrap_or_else(|e| {
-                        eprintln!("error: failed to run bwrap: {e}");
+                        eprintln!("error: failed to run bwrap at {}: {e}", path.display());
                         std::process::exit(1);
                     })
+            }
+            bubblewrap::BwrapAvailability::Unavailable { reason } => {
+                eprintln!("error: bwrap is not available: {reason}");
+                std::process::exit(1);
             }
         };
         std::process::exit(status.code().unwrap_or(1));
@@ -551,8 +570,10 @@ fn cmd_status(session_id: &str, json: bool) {
         bubblewrap::BwrapAvailability::Unavailable { .. } => "unavailable",
     };
 
-    // Derive network mode from profile spec
-    let network = {
+    // Derive network mode: custom profiles store it in metadata, built-in profiles in spec files
+    let network = if meta.profile.starts_with("custom:") {
+        meta.network.clone().unwrap_or_else(|| "off".to_string())
+    } else {
         let flake_root = nix::find_flake_root().ok();
         if let Some(ref root) = flake_root {
             spec::load_profile(&meta.profile, root)
