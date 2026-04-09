@@ -18,6 +18,18 @@
     linuxPkgs = nixpkgs.legacyPackages.${linuxSystem};
     mkSandboxRootfs = import ./nix/mkSandboxRootfs.nix { pkgs = linuxPkgs; };
 
+    # Unified catalog: agents from llm-agents.nix + tools from nixpkgs
+    linuxCatalog = import ./nix/catalog.nix {
+      pkgs = linuxPkgs;
+      llm-agents-pkgs = llm-agents.packages.${linuxSystem} or {};
+    };
+
+    # Catalog-aware sandbox builder
+    mkAgentSandbox = import ./nix/mkAgentSandbox.nix {
+      catalog = linuxCatalog;
+      inherit mkSandboxRootfs;
+    };
+
     # Helper: load a profile JSON and resolve package names to nixpkgs attrs
     loadProfile = path:
       let
@@ -48,8 +60,14 @@
     forAllSystems = f: nixpkgs.lib.genAttrs supportedSystems f;
   in
   {
-    # Library function for custom rootfs
-    lib.mkSandboxRootfs = mkSandboxRootfs;
+    # Library functions for custom rootfs and catalog composition
+    lib = {
+      inherit mkSandboxRootfs;
+      inherit mkAgentSandbox;
+    };
+
+    # Catalog: queryable package listing (always x86_64-linux for rootfs)
+    catalog = linuxCatalog;
 
     packages = forAllSystems (system:
       let
