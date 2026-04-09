@@ -334,6 +334,8 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
         // Emit result
         let result = serde_json::json!({
             "type": "result",
+            "sequence": seq.fetch_add(1, Ordering::SeqCst),
+            "ts": timestamps::now_iso8601(),
             "payload": {
                 "exitCode": exit_code.unwrap_or(-1),
                 "signal": signal,

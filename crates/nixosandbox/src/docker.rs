@@ -4,12 +4,17 @@ use crate::contract::PlanPayload;
 
 const SIDECAR_NAME: &str = "nixosandbox-sidecar";
 const IMAGE_NAME: &str = "nixosandbox-sidecar:latest";
-const CONTAINER_SESSIONS_DIR: &str = "/nixosandbox/sessions";
+/// Mount point for the host data dir inside the container.
+/// Note: this is the data dir mount point, not the sessions subdir.
+/// Sessions live at `<CONTAINER_DATA_MOUNT>/sessions/<id>/...` inside the container.
+const CONTAINER_DATA_MOUNT: &str = "/nixosandbox/sessions";
 
 /// Information about a running Docker sidecar container.
 pub struct DockerSidecar {
     pub container_id: String,
+    /// Host data directory (e.g. `~/.local/share/nixosandbox`), mounted into the container.
     pub host_sessions_dir: String,
+    /// Container-side mount point for the host data dir.
     pub container_sessions_dir: String,
 }
 
@@ -117,7 +122,7 @@ fn ensure_image() -> Result<(), String> {
 
 /// Create and start a new sidecar container.
 fn create_sidecar(host_sessions_dir: &str) -> Result<String, String> {
-    let sessions_volume = format!("{host_sessions_dir}:{CONTAINER_SESSIONS_DIR}");
+    let sessions_volume = format!("{host_sessions_dir}:{CONTAINER_DATA_MOUNT}");
     let output = Command::new("docker")
         .args([
             "run", "-d",
@@ -162,7 +167,7 @@ pub fn detect_docker_sidecar() -> Result<DockerSidecar, String> {
         return Ok(DockerSidecar {
             container_id: id,
             host_sessions_dir,
-            container_sessions_dir: CONTAINER_SESSIONS_DIR.to_string(),
+            container_sessions_dir: CONTAINER_DATA_MOUNT.to_string(),
         });
     }
 
@@ -172,7 +177,7 @@ pub fn detect_docker_sidecar() -> Result<DockerSidecar, String> {
         return Ok(DockerSidecar {
             container_id: id,
             host_sessions_dir,
-            container_sessions_dir: CONTAINER_SESSIONS_DIR.to_string(),
+            container_sessions_dir: CONTAINER_DATA_MOUNT.to_string(),
         });
     }
 
@@ -183,7 +188,7 @@ pub fn detect_docker_sidecar() -> Result<DockerSidecar, String> {
     Ok(DockerSidecar {
         container_id: id,
         host_sessions_dir,
-        container_sessions_dir: CONTAINER_SESSIONS_DIR.to_string(),
+        container_sessions_dir: CONTAINER_DATA_MOUNT.to_string(),
     })
 }
 
