@@ -7,9 +7,7 @@ mod observer;
 mod plan_builder;
 mod session;
 mod spec;
-mod supervisor;
 mod timestamps;
-mod validator;
 
 use clap::Parser;
 use cli::{Cli, Commands};
