@@ -141,8 +141,13 @@ pub fn destroy_session(session_id: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialize tests that mutate NIXOSANDBOX_DATA_DIR to avoid races.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_temp_data_dir<F: FnOnce()>(f: F) {
+        let _guard = ENV_LOCK.lock().unwrap();
         let dir = std::env::temp_dir().join(format!("nixosandbox-test-{}", uuid::Uuid::new_v4()));
         std::env::set_var("NIXOSANDBOX_DATA_DIR", &dir);
         f();
