@@ -17,7 +17,7 @@ export function spawnRuntime(options?: { env?: NodeJS.ProcessEnv }): TestRuntime
     throw new Error("RUNTIME_BINARY_PATH not set. Did globalSetup run?");
   }
 
-  const child = spawn(binaryPath, [], {
+  const child = spawn(binaryPath, ["legacy-ndjson"], {
     stdio: ["pipe", "pipe", "pipe"],
     env: options?.env ?? process.env,
   });

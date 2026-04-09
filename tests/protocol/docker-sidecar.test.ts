@@ -89,7 +89,7 @@ describe.skipIf(!DOCKER_TESTS)("Docker sidecar", () => {
     const binaryPath = process.env.RUNTIME_BINARY_PATH;
     if (!binaryPath) throw new Error("RUNTIME_BINARY_PATH not set");
 
-    const child = spawn(binaryPath, [], {
+    const child = spawn(binaryPath, ["legacy-ndjson"], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, PI_SANDBOX_NO_DOCKER: "1" },
     });
