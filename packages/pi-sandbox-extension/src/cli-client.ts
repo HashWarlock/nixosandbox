@@ -41,6 +41,17 @@ export interface CreateOptions {
   name?: string;
   agent?: string;
   description?: string;
+  withPackages?: string[];
+  network?: string;
+}
+
+export interface CatalogEntry {
+  description: string;
+}
+
+export interface CatalogResponse {
+  agents: Record<string, CatalogEntry>;
+  tools: Record<string, CatalogEntry>;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,7 +60,14 @@ export interface CreateOptions {
 
 export function createSession(binary: string, opts: CreateOptions): SessionMetadata {
   const args = ["create", "--json"];
-  if (opts.profile) { args.push("--profile", opts.profile); }
+  if (opts.withPackages && opts.withPackages.length > 0) {
+    args.push("--with", opts.withPackages.join(","));
+    if (opts.network) {
+      args.push("--network", opts.network);
+    }
+  } else if (opts.profile) {
+    args.push("--profile", opts.profile);
+  }
   if (opts.workspace) { args.push("--workspace", opts.workspace); }
   if (opts.name) { args.push("--name", opts.name); }
   if (opts.agent) { args.push("--agent", opts.agent); }
@@ -75,6 +93,13 @@ export function listSessions(binary: string): SessionMetadata[] {
 
 export function destroySession(binary: string, sessionId: string): void {
   execFileSync(binary, ["destroy", sessionId], { stdio: "pipe" });
+}
+
+export function catalogPackages(binary: string, filter?: string): CatalogResponse {
+  const args = ["catalog", "--json"];
+  if (filter) { args.push("--filter", filter); }
+  const stdout = execFileSync(binary, args, { encoding: "utf-8" });
+  return JSON.parse(stdout.trim()) as CatalogResponse;
 }
 
 export async function execCommand(
