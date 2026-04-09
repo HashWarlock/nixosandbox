@@ -212,8 +212,14 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
     let _ = session::touch_last_exec(session_id);
 
     if json {
-        // NDJSON mode: pipe stdout/stderr, stream events
+        // NDJSON mode: pipe stdout/stderr, stream lifecycle + data events
         use std::process::{Command, Stdio};
+        use std::io::{BufRead, BufReader};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::Arc;
+
+        let seq = Arc::new(AtomicU64::new(1));
+
         let mut child = match &bwrap {
             bubblewrap::BwrapAvailability::DockerAvailable { container_id, .. } => {
                 let mut cmd_args = vec!["exec".to_string(), "-i".to_string(), container_id.clone(), "bwrap".to_string()];
@@ -241,42 +247,105 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
             }
         };
 
-        use std::io::{BufRead, BufReader};
         let start = std::time::Instant::now();
-        let mut seq = 1u64;
 
-        if let Some(stdout) = child.stdout.take() {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    let event = serde_json::json!({
-                        "type": "stdout",
-                        "sequence": seq,
-                        "ts": timestamps::now_iso8601(),
-                        "payload": { "data": line }
-                    });
-                    println!("{}", event);
-                    seq += 1;
+        // Emit lifecycle started
+        let started_event = serde_json::json!({
+            "type": "lifecycle",
+            "sequence": seq.fetch_add(1, Ordering::SeqCst),
+            "ts": timestamps::now_iso8601(),
+            "payload": { "event": "started" }
+        });
+        println!("{}", started_event);
+
+        // Stream stdout and stderr in parallel threads
+        let child_stdout = child.stdout.take();
+        let child_stderr = child.stderr.take();
+
+        let seq_stdout = Arc::clone(&seq);
+        let stdout_thread = std::thread::spawn(move || {
+            if let Some(stdout) = child_stdout {
+                let reader = BufReader::new(stdout);
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        let event = serde_json::json!({
+                            "type": "stdout",
+                            "sequence": seq_stdout.fetch_add(1, Ordering::SeqCst),
+                            "ts": timestamps::now_iso8601(),
+                            "payload": { "data": line }
+                        });
+                        println!("{}", event);
+                    }
                 }
             }
-        }
+        });
+
+        let seq_stderr = Arc::clone(&seq);
+        let stderr_thread = std::thread::spawn(move || {
+            if let Some(stderr) = child_stderr {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        let event = serde_json::json!({
+                            "type": "stderr",
+                            "sequence": seq_stderr.fetch_add(1, Ordering::SeqCst),
+                            "ts": timestamps::now_iso8601(),
+                            "payload": { "data": line }
+                        });
+                        println!("{}", event);
+                    }
+                }
+            }
+        });
 
         let status = child.wait().unwrap_or_else(|e| {
             eprintln!("error: wait: {e}");
             std::process::exit(1);
         });
 
+        let _ = stdout_thread.join();
+        let _ = stderr_thread.join();
+
         let duration_ms = start.elapsed().as_millis() as u64;
+
+        // Extract exit code and signal
+        let (exit_code, signal) = {
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                if let Some(sig) = status.signal() {
+                    (None, Some(format!("SIG{sig}")))
+                } else {
+                    (status.code(), None)
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                (status.code(), None::<String>)
+            }
+        };
+
+        // Emit lifecycle exited
+        let exited_event = serde_json::json!({
+            "type": "lifecycle",
+            "sequence": seq.fetch_add(1, Ordering::SeqCst),
+            "ts": timestamps::now_iso8601(),
+            "payload": { "event": "exited" }
+        });
+        println!("{}", exited_event);
+
+        // Emit result
         let result = serde_json::json!({
             "type": "result",
             "payload": {
-                "exitCode": status.code().unwrap_or(-1),
+                "exitCode": exit_code.unwrap_or(-1),
+                "signal": signal,
                 "timedOut": false,
                 "durationMs": duration_ms,
             }
         });
         println!("{}", result);
-        std::process::exit(status.code().unwrap_or(1));
+        std::process::exit(exit_code.unwrap_or(1));
     } else {
         // Interactive mode: inherit stdio
         use std::process::Command;
