@@ -101,6 +101,8 @@ fn cmd_create(profile: Option<String>, spec_file: Option<String>, workspace: Opt
         &sandbox_spec.name,
         &rootfs_path,
         workspace.as_deref(),
+        None,
+        None,
     ).unwrap_or_else(|e| {
         eprintln!("session creation failed: {e}");
         std::process::exit(1);

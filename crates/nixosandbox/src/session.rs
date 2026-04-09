@@ -13,6 +13,10 @@ pub struct SessionMetadata {
     pub created_at: String,
     pub last_exec_at: Option<String>,
     pub pid: Option<u32>,
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 pub struct SessionDirs {
@@ -39,6 +43,7 @@ fn generate_session_id() -> String {
 
 pub fn create_session(
     name: &str, profile: &str, rootfs_path: &str, workspace: Option<&str>,
+    agent: Option<&str>, description: Option<&str>,
 ) -> Result<SessionMetadata, String> {
     let session_id = generate_session_id();
     let base = sessions_base_dir();
@@ -75,6 +80,8 @@ pub fn create_session(
         created_at: crate::timestamps::now_iso8601(),
         last_exec_at: None,
         pid: None,
+        agent: agent.map(|s| s.to_string()),
+        description: description.map(|s| s.to_string()),
     };
     let metadata_path = session_dir.join("metadata.json");
     let json = serde_json::to_string_pretty(&metadata).map_err(|e| format!("serialize: {e}"))?;
@@ -146,7 +153,7 @@ mod tests {
     #[test]
     fn create_and_list_sessions() {
         with_temp_data_dir(|| {
-            let meta = create_session("test-session", "strict", "/nix/store/fake", None).unwrap();
+            let meta = create_session("test-session", "strict", "/nix/store/fake", None, None, None).unwrap();
             assert_eq!(meta.name, "test-session");
             let sessions = list_sessions().unwrap();
             assert_eq!(sessions.len(), 1);
@@ -157,7 +164,7 @@ mod tests {
     #[test]
     fn load_session_by_id() {
         with_temp_data_dir(|| {
-            let meta = create_session("load-test", "strict", "/nix/store/fake", None).unwrap();
+            let meta = create_session("load-test", "strict", "/nix/store/fake", None, None, None).unwrap();
             let loaded = load_session(&meta.session_id).unwrap();
             assert_eq!(loaded.name, "load-test");
         });
@@ -166,7 +173,7 @@ mod tests {
     #[test]
     fn destroy_session_removes_dir() {
         with_temp_data_dir(|| {
-            let meta = create_session("rm-test", "strict", "/nix/store/fake", None).unwrap();
+            let meta = create_session("rm-test", "strict", "/nix/store/fake", None, None, None).unwrap();
             let dirs = session_dirs(&meta.session_id);
             assert!(dirs.root.exists());
             destroy_session(&meta.session_id).unwrap();
@@ -186,7 +193,7 @@ mod tests {
         with_temp_data_dir(|| {
             let ws = std::env::temp_dir().join(format!("ws-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&ws).unwrap();
-            let meta = create_session("ws-test", "strict", "/nix/store/fake", Some(ws.to_str().unwrap())).unwrap();
+            let meta = create_session("ws-test", "strict", "/nix/store/fake", Some(ws.to_str().unwrap()), None, None).unwrap();
             let dirs = session_dirs(&meta.session_id);
             assert!(dirs.workspace.is_symlink());
             destroy_session(&meta.session_id).unwrap();
@@ -202,9 +209,31 @@ mod tests {
             profile: "strict".to_string(), rootfs_path: "/nix/store/fake".to_string(),
             workspace: "/tmp/ws".to_string(), created_at: "2026-04-08T12:00:00Z".to_string(),
             last_exec_at: None, pid: None,
+            agent: Some("claude:opus-4-6".to_string()),
+            description: Some("test session".to_string()),
         };
         let json = serde_json::to_string(&meta).unwrap();
         let de: SessionMetadata = serde_json::from_str(&json).unwrap();
         assert_eq!(de.session_id, "abc");
+        assert_eq!(de.agent.as_deref(), Some("claude:opus-4-6"));
+        assert_eq!(de.description.as_deref(), Some("test session"));
+    }
+
+    #[test]
+    fn metadata_deserializes_without_new_fields() {
+        let json = r#"{
+            "sessionId": "abc",
+            "name": "test",
+            "profile": "strict",
+            "rootfsPath": "/nix/store/fake",
+            "workspace": "/tmp/ws",
+            "createdAt": "2026-04-08T12:00:00Z",
+            "lastExecAt": null,
+            "pid": null
+        }"#;
+        let de: SessionMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(de.session_id, "abc");
+        assert!(de.agent.is_none());
+        assert!(de.description.is_none());
     }
 }
