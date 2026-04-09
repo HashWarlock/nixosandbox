@@ -158,11 +158,19 @@ jobs:
             extra-substituters = https://cache.numtide.com
             extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
 
-      - name: Install bubblewrap from nixpkgs
+      - name: Install and verify bubblewrap
         run: |
-          nix build --accept-flake-config nixpkgs#bubblewrap -o /tmp/bwrap-nix
-          echo "NIXOSANDBOX_BWRAP_PATH=/tmp/bwrap-nix/bin/bwrap" >> "$GITHUB_ENV"
-          /tmp/bwrap-nix/bin/bwrap --version
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          echo "bwrap path: $(which bwrap)"
+          bwrap --version
+          # Verify bwrap can actually create sandboxes.
+          # Ubuntu 24.04 may restrict user namespaces via AppArmor (containers/bubblewrap#632).
+          if ! bwrap --ro-bind / / --dev /dev --proc /proc -- echo "bwrap sandbox works"; then
+            echo "bwrap failed — relaxing AppArmor unprivileged userns restriction"
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            bwrap --ro-bind / / --dev /dev --proc /proc -- echo "bwrap sandbox works after sysctl fix"
+          fi
 
       - name: Build nixosandbox CLI
         run: nix build --accept-flake-config .#nixosandbox

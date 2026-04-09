@@ -15,6 +15,9 @@ pub fn build_rootfs(
     namespaces: &[String],
 ) -> Vec<String> {
     let mut argv: Vec<String> = Vec::new();
+    // Lifecycle: kill sandbox when parent dies, isolate from terminal signals
+    argv.push("--die-with-parent".to_string());
+    argv.push("--new-session".to_string());
     // Mount the Nix rootfs as the new / (bwrap internally does pivot_root)
     argv.extend(["--ro-bind".to_string(), rootfs_path.to_string(), "/".to_string()]);
     argv.extend(["--bind".to_string(), session_dirs.workspace.clone(), "/workspace".to_string()]);
