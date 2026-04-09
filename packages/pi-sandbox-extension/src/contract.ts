@@ -4,9 +4,9 @@
  * FROZEN — changes require a protocol version bump.
  * Protocol version: 1
  *
- * This file defines the complete set of TypeBox schemas and TypeScript
- * interfaces for all messages exchanged over stdin/stdout between the
- * TypeScript host (pi-sandbox-extension) and the Rust sandbox supervisor.
+ * This file defines the TypeBox schemas and TypeScript interfaces for
+ * outbound messages received from the Rust sandbox supervisor via
+ * `nixosandbox exec --json` NDJSON output.
  */
 
 import { Type, type Static } from "@sinclair/typebox";
@@ -40,99 +40,15 @@ export type WarningCode =
   | "DOCKER_SIDECAR_RESTARTED";
 
 // ---------------------------------------------------------------------------
-// Shared types
-// ---------------------------------------------------------------------------
-
-export const MountSchema = Type.Object({
-  type: Type.Union([
-    Type.Literal("directory"),
-    Type.Literal("file"),
-    Type.Literal("tmpfs"),
-  ]),
-  source: Type.Optional(Type.String()),
-  target: Type.String(),
-  writable: Type.Boolean(),
-});
-export type Mount = Static<typeof MountSchema>;
-
-export const NetworkModeSchema = Type.Union([
-  Type.Literal("off"),
-  Type.Literal("full"),
-  Type.Literal("allowlist"),
-]);
-export type NetworkMode = Static<typeof NetworkModeSchema>;
-
-export const NetworkConfigSchema = Type.Object({
-  mode: NetworkModeSchema,
-  allowlist: Type.Optional(Type.Array(Type.String())),
-});
-export type NetworkConfig = Static<typeof NetworkConfigSchema>;
-
-export const ResourceLimitsSchema = Type.Object({
-  maxCpuSeconds: Type.Optional(Type.Number()),
-  maxMemoryBytes: Type.Optional(Type.Number()),
-  maxPids: Type.Optional(Type.Number()),
-  maxOutputBytes: Type.Optional(Type.Number()),
-});
-export type ResourceLimits = Static<typeof ResourceLimitsSchema>;
-
-export const ManifestSchema = Type.Object({
-  mounts: Type.Array(MountSchema),
-  env: Type.Record(Type.String(), Type.String()),
-  cwd: Type.String(),
-});
-export type Manifest = Static<typeof ManifestSchema>;
-
-export const PolicySchema = Type.Object({
-  namespaces: Type.Array(Type.String()),
-  network: NetworkConfigSchema,
-  resourceLimits: Type.Optional(ResourceLimitsSchema),
-  allowedWritableTargets: Type.Array(Type.String()),
-  strictWritePolicy: Type.Boolean(),
-  envAllowlist: Type.Optional(Type.Array(Type.String())),
-  denyCommands: Type.Optional(Type.Array(Type.String())),
-});
-export type Policy = Static<typeof PolicySchema>;
-
-// ---------------------------------------------------------------------------
-// TS -> Rust messages (Inbound to the supervisor)
-// ---------------------------------------------------------------------------
-
-export const PlanPayloadSchema = Type.Object({
-  version: Type.Number(),
-  sessionId: Type.String(),
-  executionId: Type.String(),
-  requestedProfile: Type.String(),
-  runtimeBaseName: Type.Optional(Type.String()),
-  manifest: ManifestSchema,
-  policy: PolicySchema,
-  command: Type.Array(Type.String()),
-});
-export type PlanPayload = Static<typeof PlanPayloadSchema>;
-
-export interface PlanMessage {
-  type: "plan";
-  payload: PlanPayload;
-}
-
-export const CancelPayloadSchema = Type.Object({
-  reason: Type.Optional(Type.String()),
-});
-export type CancelPayload = Static<typeof CancelPayloadSchema>;
-
-export interface CancelMessage {
-  type: "cancel";
-  payload: CancelPayload;
-}
-
-export type InboundMessage = PlanMessage | CancelMessage;
-
-// ---------------------------------------------------------------------------
 // Rust -> TS messages (Outbound from the supervisor)
 // ---------------------------------------------------------------------------
 
 export const EffectiveNetworkSchema = Type.Object({
-  requested: NetworkModeSchema,
+  requested: Type.Union([
+    Type.Literal("off"),
+    Type.Literal("full"),
+    Type.Literal("allowlist"),
+  ]),
   actual: Type.Union([
     Type.Literal("off"),
     Type.Literal("full"),

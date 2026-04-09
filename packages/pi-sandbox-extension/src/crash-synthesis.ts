@@ -8,23 +8,22 @@
 
 import type {
   EffectiveNetwork,
-  PlanPayload,
   ResultPayload,
   ValidationPayload,
 } from "./contract.js";
 
 /**
- * Synthesize a crash result when Rust exits without emitting a result.
+ * Synthesize a crash result when the CLI process exits without emitting a result.
  *
- * Case 1: Validation was received -- preserve last-known effective state.
- *   workspaceModified = true (execution likely started)
- *
- * Case 2: No validation received -- use conservative fallback.
- *   workspaceModified = false (execution likely never started)
+ * @param lastValidation - Last validation received (if any)
+ * @param requestedNetworkMode - The network mode that was requested (e.g. "off", "full")
+ * @param exitCode - Process exit code
+ * @param signal - Signal that killed the process (if any)
+ * @param durationMs - Execution duration in milliseconds
  */
 export function synthesizeCrashResult(
   lastValidation: ValidationPayload | null,
-  plan: PlanPayload,
+  requestedNetworkMode: string,
   exitCode: number | null,
   signal: string | null,
   durationMs: number,
@@ -37,7 +36,7 @@ export function synthesizeCrashResult(
     workspaceModified = true;
   } else {
     effectiveNetwork = {
-      requested: plan.policy.network.mode,
+      requested: requestedNetworkMode as any,
       actual: "full",
       enforcement: "none",
       degraded: true,
