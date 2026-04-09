@@ -19,6 +19,14 @@ pub enum Commands {
         #[arg(long)]
         spec: Option<String>,
 
+        /// Compose from catalog packages (comma-separated, e.g. claude-code,git,python312)
+        #[arg(long, value_delimiter = ',')]
+        with: Option<Vec<String>>,
+
+        /// Network mode for --with sandboxes
+        #[arg(long, default_value = "off")]
+        network: String,
+
         /// Host directory to mount as /workspace
         #[arg(long)]
         workspace: Option<String>,
@@ -104,6 +112,17 @@ pub enum Commands {
         /// Output rootfs path as JSON
         #[arg(long)]
         json: bool,
+    },
+
+    /// List available packages from the catalog
+    Catalog {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Filter by name substring
+        #[arg(long)]
+        filter: Option<String>,
     },
 
 }
