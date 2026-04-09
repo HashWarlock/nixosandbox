@@ -27,6 +27,14 @@ pub enum Commands {
         #[arg(long)]
         name: Option<String>,
 
+        /// Agent runtime identifier (e.g. 'claude:opus-4-6')
+        #[arg(long)]
+        agent: Option<String>,
+
+        /// Purpose of this sandbox session
+        #[arg(long)]
+        description: Option<String>,
+
         /// Output session info as JSON
         #[arg(long)]
         json: bool,

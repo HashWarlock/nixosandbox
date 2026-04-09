@@ -18,8 +18,8 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Create { profile, spec: spec_file, workspace, name, json } => {
-            cmd_create(profile, spec_file, workspace, name, json);
+        Commands::Create { profile, spec: spec_file, workspace, name, agent, description, json } => {
+            cmd_create(profile, spec_file, workspace, name, agent, description, json);
         }
         Commands::Exec { session_id, json, timeout: _timeout, extra_env, command } => {
             cmd_exec(&session_id, json, extra_env, command);
@@ -86,7 +86,7 @@ fn build_rootfs_for_spec(spec: &spec::SandboxSpec, profile: &Option<String>) -> 
     })
 }
 
-fn cmd_create(profile: Option<String>, spec_file: Option<String>, workspace: Option<String>, name: Option<String>, json: bool) {
+fn cmd_create(profile: Option<String>, spec_file: Option<String>, workspace: Option<String>, name: Option<String>, agent: Option<String>, description: Option<String>, json: bool) {
     let sandbox_spec = resolve_spec(profile.clone(), spec_file);
     let rootfs_path = build_rootfs_for_spec(&sandbox_spec, &profile);
 
@@ -101,8 +101,8 @@ fn cmd_create(profile: Option<String>, spec_file: Option<String>, workspace: Opt
         &sandbox_spec.name,
         &rootfs_path,
         workspace.as_deref(),
-        None,
-        None,
+        agent.as_deref(),
+        description.as_deref(),
     ).unwrap_or_else(|e| {
         eprintln!("session creation failed: {e}");
         std::process::exit(1);
