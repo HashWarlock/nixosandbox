@@ -13,6 +13,7 @@ import {
   statusSession,
   listSessions,
   execCommand,
+  catalogPackages,
 } from "./cli-client.js";
 import type { BrowserManager } from "./browser.js";
 
@@ -120,7 +121,9 @@ export function createSandboxTools(
   const sandboxRun: ToolDefinition = {
     name: "sandbox_run",
     description:
-      "Run a command inside an isolated sandbox. Returns combined stdout/stderr and execution metadata.",
+      "Run a command inside an isolated sandbox. " +
+      "Use 'with' to compose from catalog packages (call sandbox_catalog first to see available), " +
+      "or 'profile' for a built-in profile. Returns combined stdout/stderr and execution metadata.",
     parameters: Type.Object({
       command: Type.Array(Type.String(), {
         description: "Command and arguments to execute, e.g. [\"bash\", \"-c\", \"echo hello\"]",
@@ -129,8 +132,16 @@ export function createSandboxTools(
       sessionId: Type.Optional(
         Type.String({ description: "Reuse an existing session. Omit to create a new one." }),
       ),
+      with: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "Package names from the catalog (agents + tools). Mutually exclusive with profile.",
+        }),
+      ),
       profile: Type.Optional(
-        Type.String({ description: "Execution profile name. Defaults to build-install." }),
+        Type.String({ description: "Built-in profile name. Defaults to build-install. Mutually exclusive with 'with'." }),
+      ),
+      network: Type.Optional(
+        Type.String({ description: "Network mode: 'off' for review/analysis, 'full' for build/install. Default: 'off'. Only used with 'with'." }),
       ),
       agent: Type.Optional(
         Type.String({ description: "Agent runtime identifier, e.g. 'claude:opus-4-6'" }),
@@ -146,14 +157,18 @@ export function createSandboxTools(
       const {
         command,
         sessionId: maybeSessionId,
-        profile = "build-install",
+        with: withPackages,
+        profile = withPackages ? undefined : "build-install",
+        network,
         agent,
         description,
         timeoutMs,
       } = args as {
         command: string[];
         sessionId?: string;
+        with?: string[];
         profile?: string;
+        network?: string;
         agent?: string;
         description?: string;
         timeoutMs?: number;
@@ -161,7 +176,13 @@ export function createSandboxTools(
 
       let sid = maybeSessionId;
       if (!sid) {
-        const meta = createSession(binaryPath, { profile, agent, description });
+        const meta = createSession(binaryPath, {
+          withPackages,
+          profile,
+          network,
+          agent,
+          description,
+        });
         sid = meta.sessionId;
       }
 
@@ -287,6 +308,47 @@ export function createSandboxTools(
   };
 
   // -------------------------------------------------------------------------
+  // Tool: sandbox_catalog
+  // -------------------------------------------------------------------------
+  const sandboxCatalog: ToolDefinition = {
+    name: "sandbox_catalog",
+    description:
+      "List available packages for sandbox composition. " +
+      "Returns agents (AI coding tools like claude-code, pi, codex) and tools (utilities like python312, git, ripgrep). " +
+      "Call this before sandbox_run with 'with' to see what packages are available.",
+    parameters: Type.Object({
+      filter: Type.Optional(
+        Type.String({ description: "Filter results by name or description substring." }),
+      ),
+    }),
+    async execute(args: unknown): Promise<string> {
+      const { filter } = args as { filter?: string };
+      const catalog = catalogPackages(binaryPath, filter);
+
+      const lines: string[] = [];
+
+      const agentNames = Object.keys(catalog.agents).sort();
+      if (agentNames.length > 0) {
+        lines.push("Agents (AI coding tools):");
+        for (const name of agentNames) {
+          lines.push(`  ${name}  ${catalog.agents[name].description}`);
+        }
+        lines.push("");
+      }
+
+      const toolNames = Object.keys(catalog.tools).sort();
+      if (toolNames.length > 0) {
+        lines.push("Tools (utilities):");
+        for (const name of toolNames) {
+          lines.push(`  ${name}  ${catalog.tools[name].description}`);
+        }
+      }
+
+      return lines.join("\n");
+    },
+  };
+
+  // -------------------------------------------------------------------------
   // Tool: sandbox_browser
   // -------------------------------------------------------------------------
   const sandboxBrowser: ToolDefinition = {
@@ -336,6 +398,7 @@ export function createSandboxTools(
     sandboxWriteFile,
     sandboxListFiles,
     sandboxSessionInfo,
+    sandboxCatalog,
     sandboxBrowser,
   ];
 }
