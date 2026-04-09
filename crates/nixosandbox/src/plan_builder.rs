@@ -5,7 +5,7 @@ pub struct RootfsSessionDirs {
     pub cache: String,
 }
 
-/// Build bwrap argument vector for pivot-root execution into a Nix rootfs.
+/// Build bwrap argument vector for sandboxed execution with a Nix rootfs.
 pub fn build_rootfs(
     rootfs_path: &str,
     session_dirs: &RootfsSessionDirs,
@@ -15,8 +15,8 @@ pub fn build_rootfs(
     namespaces: &[String],
 ) -> Vec<String> {
     let mut argv: Vec<String> = Vec::new();
-    argv.extend(["--pivot-root".to_string(), rootfs_path.to_string(), "/oldroot".to_string()]);
-    argv.extend(["--tmpfs".to_string(), "/oldroot".to_string()]);
+    // Mount the Nix rootfs as the new / (bwrap internally does pivot_root)
+    argv.extend(["--ro-bind".to_string(), rootfs_path.to_string(), "/".to_string()]);
     argv.extend(["--bind".to_string(), session_dirs.workspace.clone(), "/workspace".to_string()]);
     argv.extend(["--bind".to_string(), session_dirs.home.clone(), "/home/sandbox".to_string()]);
     argv.extend(["--bind".to_string(), session_dirs.cache.clone(), "/cache".to_string()]);
@@ -26,7 +26,7 @@ pub fn build_rootfs(
     for ns in namespaces {
         match ns.as_str() {
             "pid" => argv.push("--unshare-pid".to_string()),
-            "mount" => {} // implicit with pivot-root
+            "mount" => {} // implicit with --ro-bind /
             "uts" => argv.push("--unshare-uts".to_string()),
             "ipc" => argv.push("--unshare-ipc".to_string()),
             "net" => argv.push("--unshare-net".to_string()),
@@ -53,7 +53,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_rootfs_produces_pivot_root_argv() {
+    fn build_rootfs_produces_ro_bind_root_argv() {
         let dirs = RootfsSessionDirs {
             workspace: "/tmp/ws".to_string(),
             home: "/tmp/home".to_string(),
@@ -62,8 +62,13 @@ mod tests {
         let cmd = vec!["echo".to_string(), "hello".to_string()];
         let env = std::collections::HashMap::new();
         let argv = build_rootfs("/nix/store/fake", &dirs, &cmd, &env, "full", &["pid".to_string()]);
-        assert!(argv.contains(&"--pivot-root".to_string()));
+        // Rootfs is mounted read-only at / (bwrap internally does pivot_root)
+        assert!(argv.contains(&"--ro-bind".to_string()));
         assert!(argv.contains(&"/nix/store/fake".to_string()));
+        // Verify rootfs is bound to /
+        let ro_bind_pos = argv.iter().position(|a| a == "--ro-bind").unwrap();
+        assert_eq!(argv[ro_bind_pos + 1], "/nix/store/fake");
+        assert_eq!(argv[ro_bind_pos + 2], "/");
         assert!(argv.contains(&"--bind".to_string()));
         assert!(argv.contains(&"--tmpfs".to_string()));
         assert!(argv.contains(&"--dev".to_string()));

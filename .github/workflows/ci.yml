@@ -158,7 +158,7 @@ jobs:
             extra-substituters = https://cache.numtide.com
             extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
 
-      - name: Install bubblewrap from nixpkgs (apt version too old for --pivot-root)
+      - name: Install bubblewrap from nixpkgs
         run: |
           nix build --accept-flake-config nixpkgs#bubblewrap -o /tmp/bwrap-nix
           echo "NIXOSANDBOX_BWRAP_PATH=/tmp/bwrap-nix/bin/bwrap" >> "$GITHUB_ENV"
