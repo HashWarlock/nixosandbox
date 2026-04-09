@@ -15,7 +15,7 @@ pub enum BwrapAvailability {
 /// Detect whether Bubblewrap is available on this platform.
 ///
 /// Resolution order:
-/// 1. `PI_SANDBOX_BWRAP_PATH` env var (if set and file exists)
+/// 1. `NIXOSANDBOX_BWRAP_PATH` env var (if set and file exists)
 /// 2. `which bwrap` on PATH (Linux only)
 /// 3. Unavailable
 ///
@@ -24,9 +24,9 @@ pub fn detect() -> BwrapAvailability {
     #[cfg(not(target_os = "linux"))]
     {
         // Check opt-out env var
-        if std::env::var("PI_SANDBOX_NO_DOCKER").map_or(false, |v| v == "1") {
+        if std::env::var("NIXOSANDBOX_NO_DOCKER").map_or(false, |v| v == "1") {
             return BwrapAvailability::Unavailable {
-                reason: "Docker fallback disabled via PI_SANDBOX_NO_DOCKER=1".to_string(),
+                reason: "Docker fallback disabled via NIXOSANDBOX_NO_DOCKER=1".to_string(),
             };
         }
 
@@ -52,14 +52,14 @@ pub fn detect() -> BwrapAvailability {
     #[cfg(target_os = "linux")]
     {
         // 1. Check env var
-        if let Ok(path_str) = std::env::var("PI_SANDBOX_BWRAP_PATH") {
+        if let Ok(path_str) = std::env::var("NIXOSANDBOX_BWRAP_PATH") {
             let path = PathBuf::from(&path_str);
             if path.exists() {
                 return BwrapAvailability::Available { path };
             }
             return BwrapAvailability::Unavailable {
                 reason: format!(
-                    "PI_SANDBOX_BWRAP_PATH set to '{}' but file does not exist",
+                    "NIXOSANDBOX_BWRAP_PATH set to '{}' but file does not exist",
                     path_str
                 ),
             };
