@@ -151,6 +151,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
       - uses: cachix/install-nix-action@v30
         with:
           extra_nix_config: |
@@ -175,8 +178,8 @@ jobs:
         run: |
           echo "Running: ${{ matrix.binary }} ${{ matrix.check }}"
           NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox exec "$SESSION_ID" --json \
-            -- ${{ matrix.binary }} ${{ matrix.check }} 2>&1 || true
-          echo "${{ matrix.agent }} smoke test complete"
+            -- ${{ matrix.binary }} ${{ matrix.check }}
+          echo "${{ matrix.agent }} smoke test passed"
 
       - name: Cleanup session
         if: always()
