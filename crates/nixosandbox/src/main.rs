@@ -14,8 +14,8 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Create { profile, spec: spec_file, workspace, name, agent, description, json } => {
-            cmd_create(profile, spec_file, workspace, name, agent, description, json);
+        Commands::Create { profile, spec: spec_file, with, network, workspace, name, agent, description, json } => {
+            cmd_create(profile, spec_file, with, network, workspace, name, agent, description, json);
         }
         Commands::Exec { session_id, json, timeout: _timeout, extra_env, command } => {
             cmd_exec(&session_id, json, extra_env, command);
@@ -34,6 +34,9 @@ fn main() {
         }
         Commands::Build { profile, spec: spec_file, json } => {
             cmd_build(profile, spec_file, json);
+        }
+        Commands::Catalog { json, filter } => {
+            cmd_catalog(json, filter);
         }
     }
 }
@@ -85,19 +88,68 @@ fn build_rootfs_for_spec(spec: &spec::SandboxSpec, profile: &Option<String>) -> 
     })
 }
 
-fn cmd_create(profile: Option<String>, spec_file: Option<String>, workspace: Option<String>, name: Option<String>, agent: Option<String>, description: Option<String>, json: bool) {
-    let sandbox_spec = resolve_spec(profile.clone(), spec_file);
-    let rootfs_path = build_rootfs_for_spec(&sandbox_spec, &profile);
-
-    nix::validate_rootfs(&rootfs_path).unwrap_or_else(|e| {
-        eprintln!("rootfs validation failed: {e}");
+fn cmd_create(
+    profile: Option<String>,
+    spec_file: Option<String>,
+    with: Option<Vec<String>>,
+    network: String,
+    workspace: Option<String>,
+    name: Option<String>,
+    agent: Option<String>,
+    description: Option<String>,
+    json: bool,
+) {
+    // Validate mutual exclusivity: --with vs --profile vs --spec
+    let source_count = [with.is_some(), profile.is_some(), spec_file.is_some()]
+        .iter()
+        .filter(|&&b| b)
+        .count();
+    if source_count > 1 {
+        eprintln!("error: specify only one of --profile, --spec, or --with");
         std::process::exit(1);
-    });
+    }
+    if source_count == 0 {
+        eprintln!("error: specify --profile, --spec, or --with");
+        std::process::exit(1);
+    }
 
-    let session_name = name.unwrap_or_else(|| sandbox_spec.name.clone());
+    let (rootfs_path, profile_name) = if let Some(ref packages) = with {
+        // Catalog-based composition
+        if packages.is_empty() {
+            eprintln!("error: --with requires at least one package name");
+            std::process::exit(1);
+        }
+        match network.as_str() {
+            "off" | "full" => {}
+            other => {
+                eprintln!("error: --network must be 'off' or 'full', got '{other}'");
+                std::process::exit(1);
+            }
+        }
+        let rootfs = nix::build_with_catalog(packages, &network).unwrap_or_else(|e| {
+            eprintln!("nix build failed: {e}");
+            std::process::exit(1);
+        });
+        nix::validate_rootfs(&rootfs).unwrap_or_else(|e| {
+            eprintln!("rootfs validation failed: {e}");
+            std::process::exit(1);
+        });
+        (rootfs, format!("custom:{}", packages.join(",")))
+    } else {
+        // Profile or spec-based
+        let sandbox_spec = resolve_spec(profile.clone(), spec_file);
+        let rootfs = build_rootfs_for_spec(&sandbox_spec, &profile);
+        nix::validate_rootfs(&rootfs).unwrap_or_else(|e| {
+            eprintln!("rootfs validation failed: {e}");
+            std::process::exit(1);
+        });
+        (rootfs, sandbox_spec.name.clone())
+    };
+
+    let session_name = name.unwrap_or_else(|| profile_name.clone());
     let meta = session::create_session(
         &session_name,
-        &sandbox_spec.name,
+        &profile_name,
         &rootfs_path,
         workspace.as_deref(),
         agent.as_deref(),
@@ -414,6 +466,72 @@ fn cmd_build(profile: Option<String>, spec_file: Option<String>, json: bool) {
         println!("{}", serde_json::json!({ "rootfsPath": rootfs_path }));
     } else {
         println!("{}", rootfs_path);
+    }
+}
+
+fn cmd_catalog(json: bool, filter: Option<String>) {
+    let catalog_json = nix::query_catalog().unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
+
+    if json && filter.is_none() {
+        println!("{}", catalog_json);
+        return;
+    }
+
+    // Parse for display or filtering
+    let catalog: serde_json::Value = serde_json::from_str(&catalog_json).unwrap_or_else(|e| {
+        eprintln!("error: failed to parse catalog: {e}");
+        std::process::exit(1);
+    });
+
+    let filter_lower = filter.as_ref().map(|f| f.to_lowercase());
+
+    if json {
+        // Filtered JSON output
+        let mut filtered = serde_json::json!({ "agents": {}, "tools": {} });
+        for section in ["agents", "tools"] {
+            if let Some(entries) = catalog.get(section).and_then(|v| v.as_object()) {
+                let filt = filter_lower.as_ref().unwrap();
+                let matched: serde_json::Map<String, serde_json::Value> = entries
+                    .iter()
+                    .filter(|(k, v)| {
+                        k.to_lowercase().contains(filt)
+                            || v.get("description")
+                                .and_then(|d| d.as_str())
+                                .map(|d| d.to_lowercase().contains(filt))
+                                .unwrap_or(false)
+                    })
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                filtered[section] = serde_json::Value::Object(matched);
+            }
+        }
+        println!("{}", serde_json::to_string_pretty(&filtered).unwrap());
+        return;
+    }
+
+    // Human-readable output
+    for (section, label) in [("agents", "Agents (from llm-agents.nix)"), ("tools", "Tools (from nixpkgs)")] {
+        if let Some(entries) = catalog.get(section).and_then(|v| v.as_object()) {
+            println!("{}:", label);
+            let mut names: Vec<&String> = entries.keys().collect();
+            names.sort();
+            for name in names {
+                let desc = entries[name]
+                    .get("description")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("");
+                if let Some(ref filt) = filter_lower {
+                    if !name.to_lowercase().contains(filt) && !desc.to_lowercase().contains(filt) {
+                        continue;
+                    }
+                }
+                println!("  {:<20} {}", name, desc);
+            }
+            println!();
+        }
     }
 }
 
