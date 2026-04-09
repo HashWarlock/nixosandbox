@@ -1,21 +1,19 @@
 /**
  * Extension Tools
  *
- * Factories for the sandbox tools exposed to the Pi host.
+ * Thin CLI adapter — all sandbox operations delegate to the nixosandbox binary.
  */
 
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { normalize, resolve as resolvePath } from "node:path";
-import { randomUUID } from "node:crypto";
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import { RuntimeClient } from "./runtime-client.js";
-import type { StreamEvent, PlanPayload } from "./contract.js";
-import { PROTOCOL_VERSION } from "./contract.js";
-import { SessionManager } from "./session-manager.js";
-import type { Session } from "./session-manager.js";
-import { getProfile, DEFAULT_PROFILE } from "./profiles.js";
-import type { RuntimeBase } from "./runtime-base.js";
+import {
+  createSession,
+  statusSession,
+  listSessions,
+  execCommand,
+} from "./cli-client.js";
 import type { BrowserManager } from "./browser.js";
 
 // ---------------------------------------------------------------------------
@@ -33,12 +31,6 @@ export interface ToolDefinition {
 // Path safety
 // ---------------------------------------------------------------------------
 
-/**
- * Resolve a caller-supplied relative path against a workspace root and
- * verify it does not escape the workspace via path traversal.
- *
- * Returns the resolved absolute path, or throws on violation.
- */
 function safePath(workspaceRoot: string, callerPath: string): string {
   const resolved = resolvePath(workspaceRoot, normalize(callerPath));
   if (!resolved.startsWith(workspaceRoot + "/") && resolved !== workspaceRoot) {
@@ -53,19 +45,27 @@ function safePath(workspaceRoot: string, callerPath: string): string {
 // Result formatter
 // ---------------------------------------------------------------------------
 
-function formatRunResult(
-  exitCode: number | null,
-  durationMs: number,
-  stdoutLines: string[],
-  stderrLines: string[],
-  terminalState: string,
-  effectiveNetworkMode: string,
-): string {
+function formatExecResult(result: Awaited<ReturnType<typeof execCommand>>): string {
+  const stdoutLines: string[] = [];
+  const stderrLines: string[] = [];
+  let exitCode: number | null = null;
+  let durationMs = 0;
+
+  for (const event of result.events) {
+    if (event.type === "stdout") {
+      stdoutLines.push((event as any).payload.data);
+    } else if (event.type === "stderr") {
+      stderrLines.push((event as any).payload.data);
+    } else if (event.type === "result") {
+      const p = (event as any).payload;
+      exitCode = p.exitCode;
+      durationMs = p.durationMs;
+    }
+  }
+
   const lines: string[] = [
-    `exit_code: ${exitCode ?? "null"}`,
+    `exit_code: ${exitCode ?? result.exitCode}`,
     `duration_ms: ${durationMs}`,
-    `terminal_state: ${terminalState}`,
-    `network: ${effectiveNetworkMode}`,
   ];
 
   if (stdoutLines.length > 0) {
@@ -82,30 +82,38 @@ function formatRunResult(
 }
 
 // ---------------------------------------------------------------------------
+// Battlecard formatter
+// ---------------------------------------------------------------------------
+
+function formatBattlecard(status: Record<string, unknown>): string {
+  const lines: string[] = [];
+  const fields = [
+    ["Session", status.sessionId],
+    ["Name", status.name],
+    ["Description", status.description ?? "-"],
+    ["Agent", status.agent ?? "-"],
+    ["Profile", status.profile],
+    ["Created", status.createdAt],
+    ["Last Exec", status.lastExecAt ?? "-"],
+    ["Network", status.network ?? "-"],
+    ["Isolation", status.isolation ?? "-"],
+    ["Workspace", status.workspace],
+  ];
+
+  for (const [label, value] of fields) {
+    lines.push(`${label}: ${value}`);
+  }
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
 export function createSandboxTools(
-  sessionManager: SessionManager,
-  runtimeBase: RuntimeBase,
   binaryPath: string,
   browserManager: BrowserManager,
 ): ToolDefinition[] {
-  // -------------------------------------------------------------------------
-  // Helper: resolve or create a session
-  // -------------------------------------------------------------------------
-  function resolveSession(sessionId?: string): Session {
-    if (sessionId) {
-      const existing = sessionManager.load(sessionId);
-      if (!existing) {
-        throw new Error(`Session not found: ${sessionId}`);
-      }
-      return existing;
-    }
-    // Create a new session
-    return sessionManager.create(runtimeBase);
-  }
-
   // -------------------------------------------------------------------------
   // Tool: sandbox_run
   // -------------------------------------------------------------------------
@@ -124,6 +132,12 @@ export function createSandboxTools(
       profile: Type.Optional(
         Type.String({ description: "Execution profile name. Defaults to build-install." }),
       ),
+      agent: Type.Optional(
+        Type.String({ description: "Agent runtime identifier, e.g. 'claude:opus-4-6'" }),
+      ),
+      description: Type.Optional(
+        Type.String({ description: "Purpose of this sandbox session" }),
+      ),
       timeoutMs: Type.Optional(
         Type.Number({ description: "Execution timeout in milliseconds." }),
       ),
@@ -132,80 +146,27 @@ export function createSandboxTools(
       const {
         command,
         sessionId: maybeSessionId,
-        profile: profileName = DEFAULT_PROFILE,
+        profile = "build-install",
+        agent,
+        description,
         timeoutMs,
       } = args as {
         command: string[];
         sessionId?: string;
         profile?: string;
+        agent?: string;
+        description?: string;
         timeoutMs?: number;
       };
 
-      const profile = getProfile(profileName);
-      const session = resolveSession(maybeSessionId);
-      const manifest = sessionManager.buildMountManifest(session, profile, runtimeBase);
-
-      const executionId = randomUUID();
-
-      const plan: PlanPayload = {
-        version: PROTOCOL_VERSION,
-        sessionId: session.record.sessionId,
-        executionId,
-        requestedProfile: profile.name,
-        runtimeBaseName: runtimeBase.name,
-        manifest,
-        policy: {
-          namespaces: profile.namespaces,
-          network: profile.network,
-          resourceLimits: profile.resourceLimits,
-          allowedWritableTargets: profile.allowedWritableTargets,
-          strictWritePolicy: profile.strictWritePolicy,
-          envAllowlist: profile.envAllowlist,
-          denyCommands: profile.denyCommands,
-        },
-        command,
-      };
-
-      const client = new RuntimeClient({
-        binaryPath,
-        timeout: timeoutMs,
-      });
-
-      const stdoutLines: string[] = [];
-      const stderrLines: string[] = [];
-
-      const handle = client.execute(plan, (event: StreamEvent) => {
-        if (event.type === "stdout") {
-          stdoutLines.push(event.payload.data);
-        } else if (event.type === "stderr") {
-          stderrLines.push(event.payload.data);
-        }
-      });
-
-      // Update session record with execution info — best-effort (no real PID from client API)
-      const updatedSession = sessionManager.markExecutionStarted(
-        session,
-        executionId,
-        0, // PID not surfaced by RuntimeClient; supervisor tracks it internally
-        profile.name,
-      );
-
-      try {
-        const result = await handle.result;
-        sessionManager.markExecutionFinished(updatedSession);
-
-        return formatRunResult(
-          result.exitCode,
-          result.durationMs,
-          stdoutLines,
-          stderrLines,
-          result.reconciliationHints.terminalState,
-          result.effectiveNetwork.actual,
-        );
-      } catch (err) {
-        sessionManager.markExecutionFinished(updatedSession);
-        throw err;
+      let sid = maybeSessionId;
+      if (!sid) {
+        const meta = createSession(binaryPath, { profile, agent, description });
+        sid = meta.sessionId;
       }
+
+      const result = await execCommand(binaryPath, sid, command, { timeoutMs });
+      return formatExecResult(result);
     },
   };
 
@@ -225,12 +186,9 @@ export function createSandboxTools(
         path: string;
       };
 
-      const session = resolveSession(sessionId);
-      const workspaceRoot = sessionManager.getWorkspacePath(session);
-      const absPath = safePath(workspaceRoot, callerPath);
-
-      const content = readFileSync(absPath, "utf8");
-      return content;
+      const status = statusSession(binaryPath, sessionId);
+      const absPath = safePath(status.workspace, callerPath);
+      return readFileSync(absPath, "utf8");
     },
   };
 
@@ -252,13 +210,11 @@ export function createSandboxTools(
         content: string;
       };
 
-      const session = resolveSession(sessionId);
-      const workspaceRoot = sessionManager.getWorkspacePath(session);
-      const absPath = safePath(workspaceRoot, callerPath);
+      const status = statusSession(binaryPath, sessionId);
+      const absPath = safePath(status.workspace, callerPath);
 
-      // Ensure parent directories exist
       const parentDir = absPath.substring(0, absPath.lastIndexOf("/"));
-      if (parentDir && parentDir !== workspaceRoot) {
+      if (parentDir && parentDir !== status.workspace) {
         mkdirSync(parentDir, { recursive: true });
       }
 
@@ -285,9 +241,8 @@ export function createSandboxTools(
         path?: string;
       };
 
-      const session = resolveSession(sessionId);
-      const workspaceRoot = sessionManager.getWorkspacePath(session);
-      const absPath = safePath(workspaceRoot, callerPath);
+      const status = statusSession(binaryPath, sessionId);
+      const absPath = safePath(status.workspace, callerPath);
 
       const entries = readdirSync(absPath, { withFileTypes: true });
       if (entries.length === 0) return "(empty directory)";
@@ -305,27 +260,27 @@ export function createSandboxTools(
   const sandboxSessionInfo: ToolDefinition = {
     name: "sandbox_session_info",
     description:
-      "List all sandbox sessions or describe a specific session.",
+      "Show sandbox session battlecard or list all sessions.",
     parameters: Type.Object({
       sessionId: Type.Optional(
-        Type.String({ description: "Session ID to describe. Omit to list all sessions." }),
+        Type.String({ description: "Session ID for detailed battlecard. Omit to list all." }),
       ),
     }),
     async execute(args: unknown): Promise<string> {
       const { sessionId } = args as { sessionId?: string };
 
       if (sessionId) {
-        const session = resolveSession(sessionId);
-        return JSON.stringify(session.record, null, 2);
+        const status = statusSession(binaryPath, sessionId);
+        return formatBattlecard(status as unknown as Record<string, unknown>);
       }
 
-      const records = sessionManager.list();
-      if (records.length === 0) return "No sessions found.";
+      const sessions = listSessions(binaryPath);
+      if (sessions.length === 0) return "No sessions found.";
 
-      return records
+      return sessions
         .map(
-          (r) =>
-            `${r.sessionId}  state=${r.state}  created=${r.createdAt}  lastActive=${r.lastActiveAt}`,
+          (s) =>
+            `${s.sessionId}  profile=${s.profile}  agent=${s.agent ?? "-"}  created=${s.createdAt}`,
         )
         .join("\n");
     },
@@ -337,7 +292,7 @@ export function createSandboxTools(
   const sandboxBrowser: ToolDefinition = {
     name: "sandbox_browser",
     description:
-      "Interact with a web browser within a sandbox session. Supports goto, screenshot, evaluate, click, type, and close actions. The page persists between calls within the same session.",
+      "Interact with a web browser within a sandbox session. Supports goto, screenshot, evaluate, click, type, and close actions.",
     parameters: Type.Object({
       sessionId: Type.String({ description: "Session ID to operate within." }),
       action: Type.Union(
@@ -351,22 +306,10 @@ export function createSandboxTools(
         ],
         { description: "Browser action to perform." },
       ),
-      url: Type.Optional(
-        Type.String({ description: "URL to navigate to (goto action)." }),
-      ),
-      selector: Type.Optional(
-        Type.String({
-          description: "CSS selector for element (click/type actions).",
-        }),
-      ),
-      text: Type.Optional(
-        Type.String({ description: "Text to type (type action)." }),
-      ),
-      script: Type.Optional(
-        Type.String({
-          description: "JavaScript to evaluate (evaluate action).",
-        }),
-      ),
+      url: Type.Optional(Type.String({ description: "URL to navigate to (goto action)." })),
+      selector: Type.Optional(Type.String({ description: "CSS selector (click/type actions)." })),
+      text: Type.Optional(Type.String({ description: "Text to type (type action)." })),
+      script: Type.Optional(Type.String({ description: "JavaScript to evaluate." })),
     }),
     async execute(args: unknown): Promise<string> {
       const { sessionId, action, url, selector, text, script } = args as {
@@ -377,11 +320,6 @@ export function createSandboxTools(
         text?: string;
         script?: string;
       };
-
-      // Verify session exists (except for close which is best-effort)
-      if (action !== "close") {
-        resolveSession(sessionId);
-      }
 
       return browserManager.execute(sessionId, action, {
         url,
