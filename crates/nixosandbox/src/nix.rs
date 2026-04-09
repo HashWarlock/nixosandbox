@@ -78,10 +78,31 @@ pub fn validate_rootfs(rootfs_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate that a package name is safe for interpolation into Nix expressions.
+/// Only allows alphanumeric, hyphen, underscore, and dot characters.
+fn validate_package_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("package name must not be empty".to_string());
+    }
+    if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.') {
+        return Err(format!(
+            "invalid package name '{}': only alphanumeric, hyphen, underscore, and dot are allowed",
+            name
+        ));
+    }
+    Ok(())
+}
+
 /// Build a rootfs from catalog package names using mkAgentSandbox.
 /// Returns the Nix store path of the resulting rootfs.
-pub fn build_with_catalog(names: &[String], network: &str) -> Result<String, String> {
+pub fn build_with_catalog(names: &[String], _network: &str) -> Result<String, String> {
     let flake_root = find_flake_root()?;
+
+    // Validate all package names before interpolating into Nix expression
+    for name in names {
+        validate_package_name(name)?;
+    }
+
     let packages_nix = names
         .iter()
         .map(|n| format!("\"{}\"", n))

@@ -17,6 +17,8 @@ pub struct SessionMetadata {
     pub agent: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub network: Option<String>,
 }
 
 pub struct SessionDirs {
@@ -42,7 +44,7 @@ fn generate_session_id() -> String {
 
 pub fn create_session(
     name: &str, profile: &str, rootfs_path: &str, workspace: Option<&str>,
-    agent: Option<&str>, description: Option<&str>,
+    agent: Option<&str>, description: Option<&str>, network: Option<&str>,
 ) -> Result<SessionMetadata, String> {
     let session_id = generate_session_id();
     let base = sessions_base_dir();
@@ -79,6 +81,7 @@ pub fn create_session(
         pid: None,
         agent: agent.map(|s| s.to_string()),
         description: description.map(|s| s.to_string()),
+        network: network.map(|s| s.to_string()),
     };
     let metadata_path = session_dir.join("metadata.json");
     let json = serde_json::to_string_pretty(&metadata).map_err(|e| format!("serialize: {e}"))?;
@@ -150,7 +153,7 @@ mod tests {
     #[test]
     fn create_and_list_sessions() {
         with_temp_data_dir(|| {
-            let meta = create_session("test-session", "strict", "/nix/store/fake", None, None, None).unwrap();
+            let meta = create_session("test-session", "strict", "/nix/store/fake", None, None, None, None).unwrap();
             assert_eq!(meta.name, "test-session");
             let sessions = list_sessions().unwrap();
             assert_eq!(sessions.len(), 1);
@@ -161,7 +164,7 @@ mod tests {
     #[test]
     fn load_session_by_id() {
         with_temp_data_dir(|| {
-            let meta = create_session("load-test", "strict", "/nix/store/fake", None, None, None).unwrap();
+            let meta = create_session("load-test", "strict", "/nix/store/fake", None, None, None, None).unwrap();
             let loaded = load_session(&meta.session_id).unwrap();
             assert_eq!(loaded.name, "load-test");
         });
@@ -170,7 +173,7 @@ mod tests {
     #[test]
     fn destroy_session_removes_dir() {
         with_temp_data_dir(|| {
-            let meta = create_session("rm-test", "strict", "/nix/store/fake", None, None, None).unwrap();
+            let meta = create_session("rm-test", "strict", "/nix/store/fake", None, None, None, None).unwrap();
             let dirs = session_dirs(&meta.session_id);
             assert!(dirs.root.exists());
             destroy_session(&meta.session_id).unwrap();
@@ -190,7 +193,7 @@ mod tests {
         with_temp_data_dir(|| {
             let ws = std::env::temp_dir().join(format!("ws-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&ws).unwrap();
-            let meta = create_session("ws-test", "strict", "/nix/store/fake", Some(ws.to_str().unwrap()), None, None).unwrap();
+            let meta = create_session("ws-test", "strict", "/nix/store/fake", Some(ws.to_str().unwrap()), None, None, None).unwrap();
             let dirs = session_dirs(&meta.session_id);
             assert!(dirs.workspace.is_symlink());
             destroy_session(&meta.session_id).unwrap();
@@ -208,12 +211,14 @@ mod tests {
             last_exec_at: None, pid: None,
             agent: Some("claude:opus-4-6".to_string()),
             description: Some("test session".to_string()),
+            network: Some("off".to_string()),
         };
         let json = serde_json::to_string(&meta).unwrap();
         let de: SessionMetadata = serde_json::from_str(&json).unwrap();
         assert_eq!(de.session_id, "abc");
         assert_eq!(de.agent.as_deref(), Some("claude:opus-4-6"));
         assert_eq!(de.description.as_deref(), Some("test session"));
+        assert_eq!(de.network.as_deref(), Some("off"));
     }
 
     #[test]

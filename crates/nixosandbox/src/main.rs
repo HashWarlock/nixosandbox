@@ -113,7 +113,7 @@ fn cmd_create(
         std::process::exit(1);
     }
 
-    let (rootfs_path, profile_name) = if let Some(ref packages) = with {
+    let (rootfs_path, profile_name, session_network) = if let Some(ref packages) = with {
         // Catalog-based composition
         if packages.is_empty() {
             eprintln!("error: --with requires at least one package name");
@@ -134,7 +134,7 @@ fn cmd_create(
             eprintln!("rootfs validation failed: {e}");
             std::process::exit(1);
         });
-        (rootfs, format!("custom:{}", packages.join(",")))
+        (rootfs, format!("custom:{}", packages.join(",")), Some(network.clone()))
     } else {
         // Profile or spec-based
         let sandbox_spec = resolve_spec(profile.clone(), spec_file);
@@ -143,7 +143,7 @@ fn cmd_create(
             eprintln!("rootfs validation failed: {e}");
             std::process::exit(1);
         });
-        (rootfs, sandbox_spec.name.clone())
+        (rootfs, sandbox_spec.name.clone(), None)
     };
 
     let session_name = name.unwrap_or_else(|| profile_name.clone());
@@ -154,6 +154,7 @@ fn cmd_create(
         workspace.as_deref(),
         agent.as_deref(),
         description.as_deref(),
+        session_network.as_deref(),
     ).unwrap_or_else(|e| {
         eprintln!("session creation failed: {e}");
         std::process::exit(1);
@@ -182,15 +183,17 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
         std::process::exit(1);
     });
 
-    // Load the spec/profile to get network and namespace config
+    // Load the spec/profile to get network and namespace config.
+    // For --with sessions, use the stored network mode from metadata.
     let sandbox_spec = spec::load_profile(&meta.profile, &flake_root).unwrap_or_else(|e| {
         eprintln!("warning: could not load profile '{}': {e}", meta.profile);
-        // Fallback spec
+        // Fallback spec — use stored network mode from session metadata if available
+        let network = meta.network.clone().unwrap_or_else(|| "full".to_string());
         spec::SandboxSpec {
             name: meta.profile.clone(),
             packages: vec![],
             env: std::collections::HashMap::new(),
-            network: "full".to_string(),
+            network,
             namespaces: vec!["pid".to_string(), "mount".to_string(), "uts".to_string(), "ipc".to_string()],
             writable: vec!["/workspace".to_string(), "/home/sandbox".to_string(), "/cache".to_string(), "/tmp".to_string()],
         }
