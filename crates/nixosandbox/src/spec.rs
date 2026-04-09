@@ -120,4 +120,14 @@ mod tests {
         };
         assert!(validate_spec(&spec).unwrap_err().iter().any(|e| e.contains("network")));
     }
+
+    #[test]
+    fn validate_empty_packages_fails() {
+        let spec = SandboxSpec {
+            name: "test".to_string(), packages: vec![],
+            env: HashMap::new(), network: "full".to_string(),
+            namespaces: vec![], writable: vec![],
+        };
+        assert!(validate_spec(&spec).unwrap_err().iter().any(|e| e.contains("packages")));
+    }
 }
