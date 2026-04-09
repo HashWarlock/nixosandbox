@@ -1,7 +1,5 @@
 use std::process::{Command, Stdio};
 
-use crate::contract::PlanPayload;
-
 const SIDECAR_NAME: &str = "nixosandbox-sidecar";
 const IMAGE_NAME: &str = "nixosandbox-sidecar:latest";
 /// Mount point for the host data dir inside the container.
@@ -192,21 +190,6 @@ pub fn detect_docker_sidecar() -> Result<DockerSidecar, String> {
     })
 }
 
-/// Restart the sidecar container after a failure.
-pub fn restart_sidecar(container_id: &str) -> Result<(), String> {
-    let status = Command::new("docker")
-        .args(["restart", container_id])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|e| format!("docker restart failed: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("docker restart failed".to_string())
-    }
-}
-
 /// Rewrite a single host path to its container-side equivalent.
 ///
 /// If the path starts with `host_prefix`, replace that prefix with `container_prefix`.
@@ -219,38 +202,9 @@ pub fn rewrite_path(path: &str, host_prefix: &str, container_prefix: &str) -> St
     }
 }
 
-/// Clone a PlanPayload and rewrite all host paths to container paths.
-///
-/// Rewrites:
-/// - `manifest.mounts[].source` for directory/file bind mounts
-/// - `manifest.cwd`
-pub fn rewrite_plan(
-    plan: &PlanPayload,
-    host_prefix: &str,
-    container_prefix: &str,
-) -> PlanPayload {
-    let mut rewritten = plan.clone();
-
-    for mount in &mut rewritten.manifest.mounts {
-        if let Some(ref mut source) = mount.source {
-            *source = rewrite_path(source, host_prefix, container_prefix);
-        }
-    }
-
-    rewritten.manifest.cwd = rewrite_path(
-        &rewritten.manifest.cwd,
-        host_prefix,
-        container_prefix,
-    );
-
-    rewritten
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contract::{Manifest, Mount, NetworkConfig, Policy};
-    use std::collections::HashMap;
 
     #[test]
     fn rewrite_path_replaces_matching_prefix() {
@@ -282,63 +236,4 @@ mod tests {
         assert_eq!(result, "/mnt/data/nested");
     }
 
-    #[test]
-    fn rewrite_plan_rewrites_mount_sources_and_cwd() {
-        let plan = PlanPayload {
-            version: 1,
-            session_id: "test".to_string(),
-            execution_id: "test".to_string(),
-            requested_profile: "build-install".to_string(),
-            runtime_base_name: None,
-            manifest: Manifest {
-                mounts: vec![
-                    Mount {
-                        mount_type: "directory".to_string(),
-                        source: Some("/Users/me/.local/share/nixosandbox/sessions/s1/workspace".to_string()),
-                        target: "/workspace".to_string(),
-                        writable: true,
-                    },
-                    Mount {
-                        mount_type: "tmpfs".to_string(),
-                        source: None,
-                        target: "/tmp".to_string(),
-                        writable: true,
-                    },
-                ],
-                env: HashMap::new(),
-                cwd: "/Users/me/.local/share/nixosandbox/sessions/s1/workspace".to_string(),
-            },
-            policy: Policy {
-                namespaces: vec![],
-                network: NetworkConfig {
-                    mode: "full".to_string(),
-                    allowlist: None,
-                },
-                resource_limits: None,
-                allowed_writable_targets: vec!["/workspace".to_string(), "/tmp".to_string()],
-                strict_write_policy: false,
-                env_allowlist: None,
-                deny_commands: None,
-            },
-            command: vec!["echo".to_string(), "hello".to_string()],
-        };
-
-        let rewritten = rewrite_plan(
-            &plan,
-            "/Users/me/.local/share/nixosandbox/sessions",
-            "/nixosandbox/sessions",
-        );
-
-        assert_eq!(
-            rewritten.manifest.mounts[0].source.as_deref(),
-            Some("/nixosandbox/sessions/s1/workspace")
-        );
-        assert_eq!(rewritten.manifest.mounts[1].source, None);
-        assert_eq!(rewritten.manifest.cwd, "/nixosandbox/sessions/s1/workspace");
-        // Original plan is unchanged
-        assert_eq!(
-            plan.manifest.cwd,
-            "/Users/me/.local/share/nixosandbox/sessions/s1/workspace"
-        );
-    }
 }
