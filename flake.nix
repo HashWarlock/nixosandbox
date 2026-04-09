@@ -1,11 +1,17 @@
 {
   description = "nixosandbox -- reproducible, isolated sandbox environments";
 
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+  nixConfig = {
+    extra-substituters = [ "https://cache.numtide.com" ];
+    extra-trusted-public-keys = [ "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=" ];
   };
 
-  outputs = { self, nixpkgs }:
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    llm-agents.url = "github:numtide/llm-agents.nix";
+  };
+
+  outputs = { self, nixpkgs, llm-agents }:
   let
     # Sandbox rootfs is always Linux
     linuxSystem = "x86_64-linux";
