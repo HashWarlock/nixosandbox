@@ -88,7 +88,4 @@ pub enum Commands {
         json: bool,
     },
 
-    /// Run in legacy NDJSON subprocess mode (for backward compatibility)
-    #[command(hide = true)]
-    LegacyNdjson,
 }

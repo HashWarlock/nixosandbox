@@ -9,13 +9,6 @@ pub const PROTOCOL_VERSION: u32 = 1;
 // Inbound types (TypeScript -> Rust)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum InboundMessage {
-    Plan { payload: PlanPayload },
-    Cancel { payload: CancelPayload },
-}
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanPayload {
@@ -75,12 +68,6 @@ pub struct ResourceLimits {
     pub max_output_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CancelPayload {
-    pub reason: Option<String>,
-}
-
 // ---------------------------------------------------------------------------
 // Outbound types (Rust -> TypeScript)
 // ---------------------------------------------------------------------------
@@ -88,7 +75,6 @@ pub struct CancelPayload {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum OutboundMessage {
-    Validation(ValidationEnvelope),
     Stdout(StdoutEnvelope),
     Stderr(StderrEnvelope),
     Lifecycle(LifecycleEnvelope),
@@ -98,15 +84,6 @@ pub enum OutboundMessage {
 }
 
 // --- Validation ---
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ValidationEnvelope {
-    #[serde(rename = "type")]
-    pub msg_type: &'static str,
-    pub v: u32,
-    pub payload: ValidationPayload,
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -157,16 +134,6 @@ pub struct EffectiveNetwork {
     pub actual: String,
     pub enforcement: String,
     pub degraded: bool,
-}
-
-impl ValidationEnvelope {
-    pub fn new(payload: ValidationPayload) -> OutboundMessage {
-        OutboundMessage::Validation(ValidationEnvelope {
-            msg_type: "validation",
-            v: PROTOCOL_VERSION,
-            payload,
-        })
-    }
 }
 
 // --- Stdout ---
