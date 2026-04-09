@@ -151,15 +151,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install bubblewrap
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
-
       - uses: cachix/install-nix-action@v30
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
             extra-substituters = https://cache.numtide.com
             extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
+
+      - name: Install bubblewrap from nixpkgs (apt version too old for --pivot-root)
+        run: nix profile install --accept-flake-config nixpkgs#bubblewrap
 
       - name: Build nixosandbox CLI
         run: nix build --accept-flake-config .#nixosandbox
