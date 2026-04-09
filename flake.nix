@@ -38,8 +38,14 @@
       sandbox-strict = loadProfile ./nix/profiles/strict.json;
       sandbox-debug-network = loadProfile ./nix/profiles/debug-network.json;
 
-      # Default package is the CLI (wired in Task 10)
-      # nixosandbox = ...;
+      nixosandbox = pkgs.rustPlatform.buildRustPackage {
+        pname = "nixosandbox";
+        version = "0.1.0";
+        src = ./crates/nixosandbox;
+        cargoLock.lockFile = ./crates/nixosandbox/Cargo.lock;
+      };
+
+      default = self.packages.${system}.nixosandbox;
     };
 
     devShells.${system}.default = pkgs.mkShell {
