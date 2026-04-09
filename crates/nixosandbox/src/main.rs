@@ -1,4 +1,5 @@
 mod bubblewrap;
+mod cli;
 mod contract;
 mod docker;
 mod observer;
@@ -7,25 +8,59 @@ mod supervisor;
 mod timestamps;
 mod validator;
 
-use std::io::{self, BufRead};
-use std::sync::mpsc;
-
-use contract::{
-    emit, InboundMessage, ReconciliationHints, ResultEnvelope, ResultPayload, ValidationEnvelope,
-    ValidationError, ValidationPayload,
-};
+use clap::Parser;
+use cli::{Cli, Commands};
 
 fn main() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Create { .. } => {
+            eprintln!("nixosandbox: create not yet implemented");
+            std::process::exit(1);
+        }
+        Commands::Exec { .. } => {
+            eprintln!("nixosandbox: exec not yet implemented");
+            std::process::exit(1);
+        }
+        Commands::Enter { .. } => {
+            eprintln!("nixosandbox: enter not yet implemented");
+            std::process::exit(1);
+        }
+        Commands::List { .. } => {
+            eprintln!("nixosandbox: list not yet implemented");
+            std::process::exit(1);
+        }
+        Commands::Destroy { .. } => {
+            eprintln!("nixosandbox: destroy not yet implemented");
+            std::process::exit(1);
+        }
+        Commands::Build { .. } => {
+            eprintln!("nixosandbox: build not yet implemented");
+            std::process::exit(1);
+        }
+        Commands::LegacyNdjson => {
+            legacy_ndjson_main();
+        }
+    }
+}
+
+/// The original NDJSON subprocess entry point (preserved for Pi backward compat).
+fn legacy_ndjson_main() {
+    use std::io::{self, BufRead};
+    use std::sync::mpsc;
+    use contract::{
+        emit, InboundMessage, ReconciliationHints, ResultEnvelope, ResultPayload,
+        ValidationEnvelope, ValidationError, ValidationPayload,
+    };
+
     let stdin = io::stdin();
     let mut first_line = String::new();
-
     if stdin.lock().read_line(&mut first_line).is_err() {
-        eprintln!("pi-sandbox-runtime: failed to read from stdin");
+        eprintln!("nixosandbox: failed to read from stdin");
         std::process::exit(1);
     }
-
     let first_line = first_line.trim();
-
     let message: InboundMessage = match serde_json::from_str(first_line) {
         Ok(m) => m,
         Err(e) => {
@@ -42,56 +77,34 @@ fn main() {
             std::process::exit(0);
         }
     };
-
     let plan = match message {
         InboundMessage::Plan { payload } => payload,
         InboundMessage::Cancel { payload } => {
-            eprintln!(
-                "pi-sandbox-runtime: received Cancel before Plan: reason={:?}",
-                payload.reason
-            );
+            eprintln!("nixosandbox: received Cancel before Plan: reason={:?}", payload.reason);
             std::process::exit(0);
         }
     };
-
-    // Detect Bubblewrap availability.
     let bwrap = bubblewrap::detect();
-
-    // Validate the plan (now takes bwrap availability).
     let validation = validator::validate(&plan, &bwrap);
-
     emit(&ValidationEnvelope::new(validation.clone()));
-
     if !validation.ok {
         std::process::exit(0);
     }
-
-    let effective_state = validation
-        .effective_state
-        .expect("effectiveState must be Some when ok=true");
-
+    let effective_state = validation.effective_state.expect("effectiveState must be Some when ok=true");
     let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
     std::thread::spawn(move || {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let Ok(text) = line else { break };
             let text = text.trim().to_string();
-            if text.is_empty() {
-                continue;
-            }
+            if text.is_empty() { continue; }
             match serde_json::from_str::<InboundMessage>(&text) {
-                Ok(InboundMessage::Cancel { .. }) => {
-                    let _ = cancel_tx.send(());
-                    break;
-                }
+                Ok(InboundMessage::Cancel { .. }) => { let _ = cancel_tx.send(()); break; }
                 _ => {}
             }
         }
     });
-
-    // Supervise (now takes bwrap availability).
     let result = supervisor::supervise(&plan, &effective_state, cancel_rx, &bwrap);
-
     emit(&ResultEnvelope::new(ResultPayload {
         exit_code: result.exit_code,
         signal: result.signal,
@@ -107,6 +120,5 @@ fn main() {
             cleanup_succeeded: true,
         },
     }));
-
     std::process::exit(0);
 }

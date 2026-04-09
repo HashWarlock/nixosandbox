@@ -113,8 +113,8 @@ secrets.json
 packages/pi-sandbox-extension/node_modules/
 packages/pi-sandbox-extension/dist/
 
-# Pi Sandbox Runtime
-crates/pi-sandbox-runtime/target/
+# Rust / Cargo
+crates/nixosandbox/target/
 
 # Protocol tests
 tests/protocol/node_modules/
