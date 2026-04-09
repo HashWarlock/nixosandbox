@@ -1,0 +1,8 @@
+{
+  "name": "build-install",
+  "packages": ["nodejs_22", "python312", "rustc", "cargo", "git", "curl", "cacert", "coreutils", "bash", "gnugrep", "gnused", "gawk", "findutils", "gnutar", "gzip", "gnumake", "gcc"],
+  "env": {},
+  "network": "full",
+  "namespaces": ["pid", "mount", "uts", "ipc"],
+  "writable": ["/workspace", "/home/sandbox", "/cache", "/tmp"]
+}

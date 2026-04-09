@@ -1,0 +1,8 @@
+{
+  "name": "strict",
+  "packages": ["coreutils", "bash", "cacert"],
+  "env": {},
+  "network": "off",
+  "namespaces": ["pid", "mount", "uts", "ipc", "net"],
+  "writable": ["/tmp"]
+}

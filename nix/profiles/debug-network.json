@@ -1,0 +1,8 @@
+{
+  "name": "debug-network",
+  "packages": ["nodejs_22", "python312", "git", "curl", "cacert", "coreutils", "bash", "inetutils", "netcat-gnu", "dig"],
+  "env": {},
+  "network": "full",
+  "namespaces": ["pid", "mount", "uts", "ipc"],
+  "writable": ["/workspace", "/home/sandbox", "/cache", "/tmp"]
+}
