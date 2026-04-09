@@ -2,9 +2,9 @@ use std::process::{Command, Stdio};
 
 use crate::contract::PlanPayload;
 
-const SIDECAR_NAME: &str = "pi-sandbox-sidecar";
-const IMAGE_NAME: &str = "pi-sandbox-base:latest";
-const CONTAINER_SESSIONS_DIR: &str = "/pi-sandbox";
+const SIDECAR_NAME: &str = "nixosandbox-sidecar";
+const IMAGE_NAME: &str = "nixosandbox-sidecar:latest";
+const CONTAINER_SESSIONS_DIR: &str = "/nixosandbox/sessions";
 
 /// Information about a running Docker sidecar container.
 pub struct DockerSidecar {
@@ -13,16 +13,16 @@ pub struct DockerSidecar {
     pub container_sessions_dir: String,
 }
 
-/// Get the pi-sandbox data directory on the host.
+/// Get the nixosandbox data directory on the host.
 ///
-/// Uses `PI_SANDBOX_DATA_DIR` env var if set, otherwise `$HOME/.local/share/pi-sandbox`.
+/// Uses `NIXOSANDBOX_DATA_DIR` env var if set, otherwise `$HOME/.local/share/nixosandbox`.
 fn get_data_dir() -> Result<String, String> {
-    if let Ok(dir) = std::env::var("PI_SANDBOX_DATA_DIR") {
+    if let Ok(dir) = std::env::var("NIXOSANDBOX_DATA_DIR") {
         return Ok(dir);
     }
     let home = std::env::var("HOME")
         .map_err(|_| "HOME environment variable not set".to_string())?;
-    Ok(format!("{home}/.local/share/pi-sandbox"))
+    Ok(format!("{home}/.local/share/nixosandbox"))
 }
 
 /// Check whether Docker is available by running `docker info`.
@@ -99,11 +99,11 @@ fn ensure_image() -> Result<(), String> {
         return Ok(());
     }
 
-    eprintln!("pi-sandbox: building Docker sidecar image (one-time setup)...");
+    eprintln!("nixosandbox: building Docker sidecar image (one-time setup)...");
     let status = Command::new("docker")
         .args([
             "build", "-t", IMAGE_NAME,
-            "-f", "docker/pi-sandbox-sidecar.Dockerfile", ".",
+            "-f", "docker/nixosandbox-sidecar.Dockerfile", ".",
         ])
         .status()
         .map_err(|e| format!("docker build failed: {e}"))?;
@@ -117,7 +117,7 @@ fn ensure_image() -> Result<(), String> {
 
 /// Create and start a new sidecar container.
 fn create_sidecar(host_sessions_dir: &str) -> Result<String, String> {
-    let volume_arg = format!("{host_sessions_dir}:{CONTAINER_SESSIONS_DIR}");
+    let sessions_volume = format!("{host_sessions_dir}:{CONTAINER_SESSIONS_DIR}");
     let output = Command::new("docker")
         .args([
             "run", "-d",
@@ -125,7 +125,8 @@ fn create_sidecar(host_sessions_dir: &str) -> Result<String, String> {
             "--cap-add", "SYS_ADMIN",
             "--cap-add", "NET_ADMIN",
             "--security-opt", "seccomp=unconfined",
-            "-v", &volume_arg,
+            "-v", &sessions_volume,
+            "-v", "/nix/store:/nix/store:ro",
             IMAGE_NAME,
             "sleep", "infinity",
         ])
@@ -249,21 +250,21 @@ mod tests {
     #[test]
     fn rewrite_path_replaces_matching_prefix() {
         let result = rewrite_path(
-            "/Users/me/.local/share/pi-sandbox/sessions/abc/workspace",
-            "/Users/me/.local/share/pi-sandbox",
-            "/pi-sandbox",
+            "/Users/me/.local/share/nixosandbox/sessions/abc/workspace",
+            "/Users/me/.local/share/nixosandbox/sessions",
+            "/nixosandbox/sessions",
         );
-        assert_eq!(result, "/pi-sandbox/sessions/abc/workspace");
+        assert_eq!(result, "/nixosandbox/sessions/abc/workspace");
     }
 
     #[test]
     fn rewrite_path_leaves_non_matching_path_unchanged() {
         let result = rewrite_path(
-            "/usr/bin/python3",
-            "/Users/me/.local/share/pi-sandbox",
-            "/pi-sandbox",
+            "/nix/store/abc123-sandbox-strict",
+            "/Users/me/.local/share/nixosandbox/sessions",
+            "/nixosandbox/sessions",
         );
-        assert_eq!(result, "/usr/bin/python3");
+        assert_eq!(result, "/nix/store/abc123-sandbox-strict");
     }
 
     #[test]
@@ -288,7 +289,7 @@ mod tests {
                 mounts: vec![
                     Mount {
                         mount_type: "directory".to_string(),
-                        source: Some("/Users/me/.local/share/pi-sandbox/sessions/s1/workspace".to_string()),
+                        source: Some("/Users/me/.local/share/nixosandbox/sessions/s1/workspace".to_string()),
                         target: "/workspace".to_string(),
                         writable: true,
                     },
@@ -300,7 +301,7 @@ mod tests {
                     },
                 ],
                 env: HashMap::new(),
-                cwd: "/Users/me/.local/share/pi-sandbox/sessions/s1/workspace".to_string(),
+                cwd: "/Users/me/.local/share/nixosandbox/sessions/s1/workspace".to_string(),
             },
             policy: Policy {
                 namespaces: vec![],
@@ -319,20 +320,20 @@ mod tests {
 
         let rewritten = rewrite_plan(
             &plan,
-            "/Users/me/.local/share/pi-sandbox",
-            "/pi-sandbox",
+            "/Users/me/.local/share/nixosandbox/sessions",
+            "/nixosandbox/sessions",
         );
 
         assert_eq!(
             rewritten.manifest.mounts[0].source.as_deref(),
-            Some("/pi-sandbox/sessions/s1/workspace")
+            Some("/nixosandbox/sessions/s1/workspace")
         );
         assert_eq!(rewritten.manifest.mounts[1].source, None);
-        assert_eq!(rewritten.manifest.cwd, "/pi-sandbox/sessions/s1/workspace");
+        assert_eq!(rewritten.manifest.cwd, "/nixosandbox/sessions/s1/workspace");
         // Original plan is unchanged
         assert_eq!(
             plan.manifest.cwd,
-            "/Users/me/.local/share/pi-sandbox/sessions/s1/workspace"
+            "/Users/me/.local/share/nixosandbox/sessions/s1/workspace"
         );
     }
 }
