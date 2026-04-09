@@ -158,10 +158,46 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
         }
     }
 
-    let rootfs_dirs = plan_builder::RootfsSessionDirs {
-        workspace: dirs.workspace.to_string_lossy().to_string(),
-        home: dirs.home.to_string_lossy().to_string(),
-        cache: dirs.cache.to_string_lossy().to_string(),
+    // Check bwrap availability
+    let bwrap = bubblewrap::detect();
+    match &bwrap {
+        bubblewrap::BwrapAvailability::Available { .. } => {}
+        bubblewrap::BwrapAvailability::DockerAvailable { .. } => {}
+        bubblewrap::BwrapAvailability::Unavailable { reason } => {
+            eprintln!("error: bwrap is not available: {reason}");
+            std::process::exit(1);
+        }
+    };
+
+    // For Docker, rewrite session directory paths from host to container paths.
+    // Nix store paths need no rewriting — identical on host and container.
+    let rootfs_dirs = match &bwrap {
+        bubblewrap::BwrapAvailability::DockerAvailable {
+            host_sessions_dir,
+            container_sessions_dir,
+            ..
+        } => plan_builder::RootfsSessionDirs {
+            workspace: docker::rewrite_path(
+                &dirs.workspace.to_string_lossy(),
+                host_sessions_dir,
+                container_sessions_dir,
+            ),
+            home: docker::rewrite_path(
+                &dirs.home.to_string_lossy(),
+                host_sessions_dir,
+                container_sessions_dir,
+            ),
+            cache: docker::rewrite_path(
+                &dirs.cache.to_string_lossy(),
+                host_sessions_dir,
+                container_sessions_dir,
+            ),
+        },
+        _ => plan_builder::RootfsSessionDirs {
+            workspace: dirs.workspace.to_string_lossy().to_string(),
+            home: dirs.home.to_string_lossy().to_string(),
+            cache: dirs.cache.to_string_lossy().to_string(),
+        },
     };
 
     let bwrap_argv = plan_builder::build_rootfs(
@@ -172,19 +208,6 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
         &sandbox_spec.network,
         &sandbox_spec.namespaces,
     );
-
-    // Check bwrap availability
-    let bwrap = bubblewrap::detect();
-    match &bwrap {
-        bubblewrap::BwrapAvailability::Available { .. } => {}
-        bubblewrap::BwrapAvailability::DockerAvailable { .. } => {
-            eprintln!("warning: Docker execution with rootfs not yet fully supported");
-        }
-        bubblewrap::BwrapAvailability::Unavailable { reason } => {
-            eprintln!("error: bwrap is not available: {reason}");
-            std::process::exit(1);
-        }
-    };
 
     let _ = session::touch_last_exec(session_id);
 
