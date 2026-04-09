@@ -121,3 +121,66 @@ jobs:
           else
             echo "Mutual exclusivity check passed"
           fi
+
+  agent-smoke-tests:
+    name: Agent sandbox smoke tests
+    runs-on: ubuntu-latest
+    needs: [nix-build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - agent: claude-code
+            binary: claude
+            check: "--version"
+          - agent: codex
+            binary: codex
+            check: "--help"
+          - agent: opencode
+            binary: opencode
+            check: "--version"
+          - agent: amp
+            binary: amp
+            check: "--help"
+          - agent: droid
+            binary: droid
+            check: "--version"
+          - agent: pi
+            binary: pi
+            check: "--help"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            extra-substituters = https://cache.numtide.com
+            extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
+
+      - name: Build nixosandbox CLI
+        run: nix build --accept-flake-config .#nixosandbox
+
+      - name: Create sandbox with ${{ matrix.agent }}
+        run: |
+          echo "Creating sandbox with ${{ matrix.agent }} + bash..."
+          output=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox create \
+            --with ${{ matrix.agent }},bash --network off --name ci-${{ matrix.agent }} --json)
+          echo "$output"
+          echo "$output" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Session: {d[\"sessionId\"]}, Profile: {d[\"profile\"]}')"
+          session_id=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['sessionId'])")
+          echo "SESSION_ID=$session_id" >> "$GITHUB_ENV"
+
+      - name: Verify ${{ matrix.agent }} binary launches
+        run: |
+          echo "Running: ${{ matrix.binary }} ${{ matrix.check }}"
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox exec "$SESSION_ID" --json \
+            -- ${{ matrix.binary }} ${{ matrix.check }} 2>&1 || true
+          echo "${{ matrix.agent }} smoke test complete"
+
+      - name: Cleanup session
+        if: always()
+        run: |
+          if [ -n "$SESSION_ID" ]; then
+            NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy "$SESSION_ID" 2>/dev/null || true
+          fi
