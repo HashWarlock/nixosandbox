@@ -81,6 +81,16 @@ pub enum Commands {
         session_id: String,
     },
 
+    /// Show detailed session status (battlecard)
+    Status {
+        /// Session ID
+        session_id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Build a rootfs without creating a session
     Build {
         /// Use a built-in profile

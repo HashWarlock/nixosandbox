@@ -33,6 +33,9 @@ fn main() {
         Commands::Destroy { session_id } => {
             cmd_destroy(&session_id);
         }
+        Commands::Status { session_id, json } => {
+            cmd_status(&session_id, json);
+        }
         Commands::Build { profile, spec: spec_file, json } => {
             cmd_build(profile, spec_file, json);
         }
@@ -415,6 +418,75 @@ fn cmd_build(profile: Option<String>, spec_file: Option<String>, json: bool) {
         println!("{}", serde_json::json!({ "rootfsPath": rootfs_path }));
     } else {
         println!("{}", rootfs_path);
+    }
+}
+
+fn cmd_status(session_id: &str, json: bool) {
+    let meta = session::load_session(session_id).unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
+
+    // Derive isolation backend
+    let isolation = match bubblewrap::detect() {
+        bubblewrap::BwrapAvailability::Available { .. } => "native",
+        bubblewrap::BwrapAvailability::DockerAvailable { .. } => "docker",
+        bubblewrap::BwrapAvailability::Unavailable { .. } => "unavailable",
+    };
+
+    // Derive network mode from profile spec
+    let network = {
+        let flake_root = nix::find_flake_root().ok();
+        if let Some(ref root) = flake_root {
+            spec::load_profile(&meta.profile, root)
+                .map(|s| s.network.clone())
+                .unwrap_or_else(|_| "unknown".to_string())
+        } else {
+            "unknown".to_string()
+        }
+    };
+
+    if json {
+        let status = serde_json::json!({
+            "sessionId": meta.session_id,
+            "name": meta.name,
+            "profile": meta.profile,
+            "rootfsPath": meta.rootfs_path,
+            "workspace": meta.workspace,
+            "createdAt": meta.created_at,
+            "lastExecAt": meta.last_exec_at,
+            "agent": meta.agent,
+            "description": meta.description,
+            "isolation": isolation,
+            "network": network,
+        });
+        println!("{}", serde_json::to_string_pretty(&status).unwrap());
+    } else {
+        let truncate = |s: &str, max: usize| -> String {
+            if s.len() > max { format!("{}...", &s[..max-3]) } else { s.to_string() }
+        };
+
+        let desc = meta.description.as_deref().unwrap_or("-");
+        let agent = meta.agent.as_deref().unwrap_or("-");
+        let last_exec = meta.last_exec_at.as_deref().unwrap_or("-");
+        let rootfs_display = truncate(&meta.rootfs_path, 36);
+        let workspace_display = truncate(&meta.workspace, 36);
+
+        let w = 48;
+        println!("╭{}╮", "─".repeat(w));
+        println!("│ {:<width$} │", format!("Session: {}", meta.session_id), width = w - 2);
+        println!("├{}┤", "─".repeat(w));
+        println!("│ {:<13}{:<width$} │", "Name:", meta.name, width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Description:", truncate(desc, w - 15), width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Agent:", agent, width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Profile:", meta.profile, width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Created:", meta.created_at, width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Last Exec:", last_exec, width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Rootfs:", rootfs_display, width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Workspace:", workspace_display, width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Network:", network, width = w - 15);
+        println!("│ {:<13}{:<width$} │", "Isolation:", isolation, width = w - 15);
+        println!("╰{}╯", "─".repeat(w));
     }
 }
 
