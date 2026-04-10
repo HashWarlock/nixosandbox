@@ -1,6 +1,6 @@
 mod bubblewrap;
-mod cli;
 mod catalog;
+mod cli;
 mod docker;
 mod nix;
 mod plan_builder;
@@ -15,10 +15,36 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Create { profile, spec: spec_file, with, network, workspace, name, agent, description, json } => {
-            cmd_create(profile, spec_file, with, network, workspace, name, agent, description, json);
+        Commands::Create {
+            profile,
+            spec: spec_file,
+            with,
+            network,
+            workspace,
+            name,
+            agent,
+            description,
+            json,
+        } => {
+            cmd_create(
+                profile,
+                spec_file,
+                with,
+                network,
+                workspace,
+                name,
+                agent,
+                description,
+                json,
+            );
         }
-        Commands::Exec { session_id, json, timeout: _timeout, extra_env, command } => {
+        Commands::Exec {
+            session_id,
+            json,
+            timeout: _timeout,
+            extra_env,
+            command,
+        } => {
             cmd_exec(&session_id, json, extra_env, command);
         }
         Commands::Enter { session_id } => {
@@ -33,11 +59,19 @@ fn main() {
         Commands::Status { session_id, json } => {
             cmd_status(&session_id, json);
         }
-        Commands::Build { profile, spec: spec_file, json } => {
+        Commands::Build {
+            profile,
+            spec: spec_file,
+            json,
+        } => {
             cmd_build(profile, spec_file, json);
         }
-        Commands::Catalog { json, filter } => {
-            cmd_catalog(json, filter);
+        Commands::Catalog {
+            json,
+            grouped,
+            filter,
+        } => {
+            cmd_catalog(json, grouped, filter);
         }
     }
 }
@@ -54,12 +88,10 @@ fn resolve_spec(profile: Option<String>, spec_file: Option<String>) -> spec::San
                 std::process::exit(1);
             })
         }
-        (None, Some(s)) => {
-            spec::load_spec(&s).unwrap_or_else(|e| {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            })
-        }
+        (None, Some(s)) => spec::load_spec(&s).unwrap_or_else(|e| {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }),
         (Some(_), Some(_)) => {
             eprintln!("error: specify --profile or --spec, not both");
             std::process::exit(1);
@@ -135,7 +167,11 @@ fn cmd_create(
             eprintln!("rootfs validation failed: {e}");
             std::process::exit(1);
         });
-        (rootfs, format!("custom:{}", packages.join(",")), Some(network.clone()))
+        (
+            rootfs,
+            format!("custom:{}", packages.join(",")),
+            Some(network.clone()),
+        )
     } else {
         // Profile or spec-based
         let sandbox_spec = resolve_spec(profile.clone(), spec_file);
@@ -156,7 +192,8 @@ fn cmd_create(
         agent.as_deref(),
         description.as_deref(),
         session_network.as_deref(),
-    ).unwrap_or_else(|e| {
+    )
+    .unwrap_or_else(|e| {
         eprintln!("session creation failed: {e}");
         std::process::exit(1);
     });
@@ -193,8 +230,18 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
             packages: vec![],
             env: std::collections::HashMap::new(),
             network,
-            namespaces: vec!["pid".to_string(), "mount".to_string(), "uts".to_string(), "ipc".to_string()],
-            writable: vec!["/workspace".to_string(), "/home/sandbox".to_string(), "/cache".to_string(), "/tmp".to_string()],
+            namespaces: vec![
+                "pid".to_string(),
+                "mount".to_string(),
+                "uts".to_string(),
+                "ipc".to_string(),
+            ],
+            writable: vec![
+                "/workspace".to_string(),
+                "/home/sandbox".to_string(),
+                "/cache".to_string(),
+                "/tmp".to_string(),
+            ],
         }
     } else {
         spec::load_profile(&meta.profile, &flake_root).unwrap_or_else(|e| {
@@ -205,8 +252,18 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
                 packages: vec![],
                 env: std::collections::HashMap::new(),
                 network,
-                namespaces: vec!["pid".to_string(), "mount".to_string(), "uts".to_string(), "ipc".to_string()],
-                writable: vec!["/workspace".to_string(), "/home/sandbox".to_string(), "/cache".to_string(), "/tmp".to_string()],
+                namespaces: vec![
+                    "pid".to_string(),
+                    "mount".to_string(),
+                    "uts".to_string(),
+                    "ipc".to_string(),
+                ],
+                writable: vec![
+                    "/workspace".to_string(),
+                    "/home/sandbox".to_string(),
+                    "/cache".to_string(),
+                    "/tmp".to_string(),
+                ],
             }
         })
     };
@@ -278,8 +335,8 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
 
     if json {
         // NDJSON mode: pipe stdout/stderr, stream lifecycle + data events
-        use std::process::{Command, Stdio};
         use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
         use std::sync::atomic::{AtomicU64, Ordering};
         use std::sync::Arc;
 
@@ -287,7 +344,12 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
 
         let mut child = match &bwrap {
             bubblewrap::BwrapAvailability::DockerAvailable { container_id, .. } => {
-                let mut cmd_args = vec!["exec".to_string(), "-i".to_string(), container_id.clone(), "bwrap".to_string()];
+                let mut cmd_args = vec![
+                    "exec".to_string(),
+                    "-i".to_string(),
+                    container_id.clone(),
+                    "bwrap".to_string(),
+                ];
                 cmd_args.extend(bwrap_argv);
                 Command::new("docker")
                     .args(&cmd_args)
@@ -299,17 +361,15 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
                         std::process::exit(1);
                     })
             }
-            bubblewrap::BwrapAvailability::Available { path } => {
-                Command::new(path)
-                    .args(&bwrap_argv)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-                    .unwrap_or_else(|e| {
-                        eprintln!("error: failed to spawn bwrap at {}: {e}", path.display());
-                        std::process::exit(1);
-                    })
-            }
+            bubblewrap::BwrapAvailability::Available { path } => Command::new(path)
+                .args(&bwrap_argv)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap_or_else(|e| {
+                    eprintln!("error: failed to spawn bwrap at {}: {e}", path.display());
+                    std::process::exit(1);
+                }),
             bubblewrap::BwrapAvailability::Unavailable { reason } => {
                 eprintln!("error: bwrap is not available: {reason}");
                 std::process::exit(1);
@@ -422,7 +482,12 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
         use std::process::Command;
         let status = match &bwrap {
             bubblewrap::BwrapAvailability::DockerAvailable { container_id, .. } => {
-                let mut cmd_args = vec!["exec".to_string(), "-i".to_string(), container_id.clone(), "bwrap".to_string()];
+                let mut cmd_args = vec![
+                    "exec".to_string(),
+                    "-i".to_string(),
+                    container_id.clone(),
+                    "bwrap".to_string(),
+                ];
                 cmd_args.extend(bwrap_argv);
                 Command::new("docker")
                     .args(&cmd_args)
@@ -432,15 +497,13 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
                         std::process::exit(1);
                     })
             }
-            bubblewrap::BwrapAvailability::Available { path } => {
-                Command::new(path)
-                    .args(&bwrap_argv)
-                    .status()
-                    .unwrap_or_else(|e| {
-                        eprintln!("error: failed to run bwrap at {}: {e}", path.display());
-                        std::process::exit(1);
-                    })
-            }
+            bubblewrap::BwrapAvailability::Available { path } => Command::new(path)
+                .args(&bwrap_argv)
+                .status()
+                .unwrap_or_else(|e| {
+                    eprintln!("error: failed to run bwrap at {}: {e}", path.display());
+                    std::process::exit(1);
+                }),
             bubblewrap::BwrapAvailability::Unavailable { reason } => {
                 eprintln!("error: bwrap is not available: {reason}");
                 std::process::exit(1);
@@ -466,9 +529,15 @@ fn cmd_list(json: bool) {
             println!("No active sessions.");
             return;
         }
-        println!("{:<12} {:<20} {:<16} {}", "SESSION", "NAME", "PROFILE", "CREATED");
+        println!(
+            "{:<12} {:<20} {:<16} {}",
+            "SESSION", "NAME", "PROFILE", "CREATED"
+        );
         for s in &sessions {
-            println!("{:<12} {:<20} {:<16} {}", s.session_id, s.name, s.profile, s.created_at);
+            println!(
+                "{:<12} {:<20} {:<16} {}",
+                s.session_id, s.name, s.profile, s.created_at
+            );
         }
     }
 }
@@ -492,16 +561,11 @@ fn cmd_build(profile: Option<String>, spec_file: Option<String>, json: bool) {
     }
 }
 
-fn cmd_catalog(json: bool, filter: Option<String>) {
+fn cmd_catalog(json: bool, grouped: bool, filter: Option<String>) {
     let catalog_json = nix::query_catalog().unwrap_or_else(|e| {
         eprintln!("error: {e}");
         std::process::exit(1);
     });
-
-    if json && filter.is_none() {
-        println!("{}", catalog_json);
-        return;
-    }
 
     // Parse for display or filtering
     let catalog: serde_json::Value = serde_json::from_str(&catalog_json).unwrap_or_else(|e| {
@@ -509,77 +573,35 @@ fn cmd_catalog(json: bool, filter: Option<String>) {
         std::process::exit(1);
     });
 
-    let filter_lower = filter.as_ref().map(|f| f.to_lowercase());
-
     if json {
-        // Filtered JSON output
-        let mut filtered = serde_json::json!({ "agents": {}, "tools": {} });
-        for section in ["agents", "tools"] {
-            if let Some(entries) = catalog.get(section).and_then(|v| v.as_object()) {
-                let filt = filter_lower.as_ref().unwrap();
-                let matched: serde_json::Map<String, serde_json::Value> = entries
-                    .iter()
-                    .filter(|(k, v)| {
-                        k.to_lowercase().contains(filt)
-                            || v.get("description")
-                                .and_then(|d| d.as_str())
-                                .map(|d| d.to_lowercase().contains(filt))
-                                .unwrap_or(false)
-                    })
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                filtered[section] = serde_json::Value::Object(matched);
-            }
+        if grouped {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&catalog::grouped_catalog_json(
+                    &catalog,
+                    filter.as_deref(),
+                ))
+                .unwrap()
+            );
+        } else if filter.is_none() {
+            println!("{}", catalog_json);
+        } else {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&catalog::flat_catalog_json(
+                    &catalog,
+                    filter.as_deref(),
+                ))
+                .unwrap()
+            );
         }
-        println!("{}", serde_json::to_string_pretty(&filtered).unwrap());
         return;
     }
 
-    // Human-readable output
-    if let Some(entries) = catalog.get("agents").and_then(|v| v.as_object()) {
-        let grouped = catalog::grouped_agents(entries);
-        for section in [
-            catalog::AgentSection::AiCodingAgents,
-            catalog::AgentSection::AiAssistants,
-            catalog::AgentSection::CodeReview,
-        ] {
-            if let Some(entries) = grouped.get(&section) {
-                println!("{}:", section.label());
-                for (name, value) in entries {
-                    let desc = value
-                        .get("description")
-                        .and_then(|d| d.as_str())
-                        .unwrap_or("");
-                    if let Some(ref filt) = filter_lower {
-                        if !name.to_lowercase().contains(filt) && !desc.to_lowercase().contains(filt) {
-                            continue;
-                        }
-                    }
-                    println!("  {:<20} {}", name, desc);
-                }
-                println!();
-            }
-        }
-    }
-
-    if let Some(entries) = catalog.get("tools").and_then(|v| v.as_object()) {
-        println!("Tools (from nixpkgs):");
-        let mut names: Vec<&String> = entries.keys().collect();
-        names.sort();
-        for name in names {
-            let desc = entries[name]
-                .get("description")
-                .and_then(|d| d.as_str())
-                .unwrap_or("");
-            if let Some(ref filt) = filter_lower {
-                if !name.to_lowercase().contains(filt) && !desc.to_lowercase().contains(filt) {
-                    continue;
-                }
-            }
-            println!("  {:<20} {}", name, desc);
-        }
-        println!();
-    }
+    print!(
+        "{}",
+        catalog::grouped_catalog_text(&catalog, filter.as_deref())
+    );
 }
 
 fn cmd_status(session_id: &str, json: bool) {
@@ -642,18 +664,57 @@ fn cmd_status(session_id: &str, json: bool) {
 
         let w = 48;
         println!("╭{}╮", "─".repeat(w));
-        println!("│ {:<width$} │", format!("Session: {}", meta.session_id), width = w - 2);
+        println!(
+            "│ {:<width$} │",
+            format!("Session: {}", meta.session_id),
+            width = w - 2
+        );
         println!("├{}┤", "─".repeat(w));
         println!("│ {:<13}{:<width$} │", "Name:", meta.name, width = w - 15);
-        println!("│ {:<13}{:<width$} │", "Description:", truncate(desc, w - 15), width = w - 15);
+        println!(
+            "│ {:<13}{:<width$} │",
+            "Description:",
+            truncate(desc, w - 15),
+            width = w - 15
+        );
         println!("│ {:<13}{:<width$} │", "Agent:", agent, width = w - 15);
-        println!("│ {:<13}{:<width$} │", "Profile:", meta.profile, width = w - 15);
-        println!("│ {:<13}{:<width$} │", "Created:", meta.created_at, width = w - 15);
-        println!("│ {:<13}{:<width$} │", "Last Exec:", last_exec, width = w - 15);
-        println!("│ {:<13}{:<width$} │", "Rootfs:", rootfs_display, width = w - 15);
-        println!("│ {:<13}{:<width$} │", "Workspace:", workspace_display, width = w - 15);
+        println!(
+            "│ {:<13}{:<width$} │",
+            "Profile:",
+            meta.profile,
+            width = w - 15
+        );
+        println!(
+            "│ {:<13}{:<width$} │",
+            "Created:",
+            meta.created_at,
+            width = w - 15
+        );
+        println!(
+            "│ {:<13}{:<width$} │",
+            "Last Exec:",
+            last_exec,
+            width = w - 15
+        );
+        println!(
+            "│ {:<13}{:<width$} │",
+            "Rootfs:",
+            rootfs_display,
+            width = w - 15
+        );
+        println!(
+            "│ {:<13}{:<width$} │",
+            "Workspace:",
+            workspace_display,
+            width = w - 15
+        );
         println!("│ {:<13}{:<width$} │", "Network:", network, width = w - 15);
-        println!("│ {:<13}{:<width$} │", "Isolation:", isolation, width = w - 15);
+        println!(
+            "│ {:<13}{:<width$} │",
+            "Isolation:",
+            isolation,
+            width = w - 15
+        );
         println!("╰{}╯", "─".repeat(w));
     }
 }
