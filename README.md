@@ -33,6 +33,16 @@ nixo CLI (Rust)
 
 ## Install
 
+### Homebrew (recommended)
+
+```bash
+brew install <your-tap>/nixo
+nixo --help
+nixosandbox --help  # compatibility alias
+```
+
+If you maintain a tap, start from [`packaging/homebrew/nixo.rb`](packaging/homebrew/nixo.rb) and update the release URLs and sha256 values for each version you publish.
+
 ### From source (requires Nix with flakes)
 
 ```bash
