@@ -249,8 +249,11 @@ jobs:
             extra-substituters = https://cache.numtide.com
             extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
 
-      - name: Install Docker
-        uses: docker/setup-docker-action@v4
+      - name: Install Docker via Colima
+        run: |
+          brew install docker colima
+          colima start --arch x86_64 --cpu 3 --memory 8 --disk 32
+          docker info
 
       - name: Build nixosandbox CLI (native macOS)
         run: nix build --accept-flake-config .#nixosandbox
@@ -284,3 +287,4 @@ jobs:
             NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy "$SESSION_ID" 2>/dev/null || true
           fi
           docker rm -f nixosandbox-sidecar 2>/dev/null || true
+          colima stop 2>/dev/null || true
