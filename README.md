@@ -41,7 +41,7 @@ nixo --help
 nixosandbox --help  # compatibility alias
 ```
 
-[packaging/homebrew/nixo.rb](packaging/homebrew/nixo.rb) is a tap bootstrap template, not a ready-to-publish formula. Replace the release URLs and placeholder sha256 values before publishing your tap.
+[packaging/homebrew/nixo.rb](packaging/homebrew/nixo.rb) is a tap bootstrap template, not a ready-to-publish formula. It is written for `nixo` as the primary executable and installs `nixosandbox` as a compatibility symlink. Replace the release URLs and placeholder sha256 values before publishing your tap.
 
 ### From source (requires Nix with flakes)
 
@@ -66,6 +66,7 @@ cargo build
 nixo catalog
 nixo catalog --filter claude
 nixo catalog --json | jq '.agents | keys'
+nixo catalog --json --grouped | jq '.agentCategories | keys'
 ```
 
 ### 2. Create a sandbox
@@ -138,6 +139,14 @@ nixo destroy <session-id>    # clean up
 
 `--with`, `--profile`, and `--spec` are mutually exclusive.
 
+### `catalog` flags
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON (flat compatibility by default) |
+| `--grouped` | Group agent catalog JSON by category |
+| `--filter <text>` | Filter package names and descriptions by substring |
+
 ## Catalog
 
 The catalog merges two sources:
@@ -166,6 +175,11 @@ The catalog merges two sources:
 **Development tools** from nixpkgs:
 
 `python312` `nodejs_22` `rustc` `cargo` `go` `git` `coreutils` `bash` `findutils` `gnugrep` `gnused` `gawk` `gnumake` `gcc` `gnutar` `gzip` `curl` `cacert` `ripgrep` `fd` `jq` `less` `zsh` `nix`
+
+Catalog output supports two JSON views:
+
+- `nixo catalog --json` keeps the current flat compatibility shape with top-level `agents` and `tools`
+- `nixo catalog --json --grouped` returns grouped agent categories under `agentCategories`
 
 ## Built-in profiles
 

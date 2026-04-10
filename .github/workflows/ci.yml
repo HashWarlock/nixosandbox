@@ -95,6 +95,20 @@ jobs:
           NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json | python3 -m json.tool > /dev/null
           echo "Catalog JSON is valid"
 
+      - name: Test grouped catalog output
+        run: |
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json --grouped | python3 -m json.tool > /dev/null
+          echo "Grouped catalog JSON is valid"
+
+      - name: Verify CLI alias help parity
+        run: |
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixo --help > "$tmpdir/nixo-help"
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox --help > "$tmpdir/nixosandbox-help"
+          diff -u "$tmpdir/nixo-help" "$tmpdir/nixosandbox-help"
+          echo "nixo and nixosandbox help output match"
+
       - name: Verify catalog agent count and new packages
         run: |
           catalog_json=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json)
