@@ -1,269 +1,357 @@
-# NixOS Sandbox for AI Agents
+# nixosandbox
 
-A lightweight, self-hosted sandbox environment for AI agents with browser automation, shell access, code execution, and file operations — all controlled via REST API.
+Reproducible, isolated sandbox environments for AI coding agents. Compose sandboxes from 88+ agents and 24+ tools using Nix, run them in Bubblewrap containers with configurable network and filesystem policies.
 
-## Features
+## What it does
 
-- **Shell** — Execute commands with streaming output (SSE)
-- **Code Execution** — Python, JavaScript, TypeScript, Go, Rust, Bash
-- **File System** — Read, write, list, upload, download
-- **Browser** — CDP-based Chromium automation (goto, screenshot, evaluate, click, type)
-- **Skills** — Filesystem-based skill registry with CRUD + search
-- **TEE** — Optional Trusted Execution Environment support (dstack integration)
-
-## Tech Stack
-
-- **Rust** with Axum 0.8 + Tokio async runtime
-- **chromiumoxide** for browser automation via CDP
-- **Nix** for reproducible runtime environments
-
-## Quick Start
-
-### 1. Build the Rust API server
+nixosandbox creates lightweight Linux sandboxes from a catalog of Nix packages. You pick the agent and tools you need, and it builds an isolated rootfs with just those packages — no Docker images, no VMs, no manual setup.
 
 ```bash
-cd sandbox-rs
-cargo build --release
+# Create a sandbox with Claude Code + Git + Python
+nixosandbox create --with claude-code,git,python312 --network off --json
+
+# Run a command inside it
+nixosandbox exec <session-id> -- claude --version
+
+# Or drop into an interactive shell
+nixosandbox enter <session-id>
 ```
 
-### 2. Run the server
+## Architecture
+
+```
+nixosandbox CLI (Rust)
+  ├── Nix: builds rootfs from catalog packages
+  ├── Bubblewrap: creates isolated mount/pid/net namespaces
+  ├── Session manager: tracks sandbox lifecycle
+  └── Catalog: 88+ AI agents (llm-agents.nix) + 24+ dev tools (nixpkgs)
+```
+
+**On Linux:** uses bubblewrap directly (setuid or user namespaces).
+**On macOS:** uses a Docker sidecar container with bwrap inside.
+
+## Install
+
+### From source (requires Nix with flakes)
 
 ```bash
-# Default port 8080
-cargo run --release
-
-# Custom port
-PORT=9090 cargo run --release
-
-# With TEE support
-cargo run --release --features tee
+nix build github:HashWarlock/nixosandbox
+./result/bin/nixosandbox --help
 ```
 
-### 3. Verify it's running
+### Development shell
 
 ```bash
-curl http://localhost:8080/health
-# {"status":"healthy","uptime":1.23,"services":{"display":false,"browser":false}}
+nix develop
+cargo build
 ```
 
-## API Endpoints
+## Quick start
 
-### Health & Info
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check with uptime and service status |
-| GET | `/sandbox/info` | Sandbox environment info |
-
-### Shell
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/shell/exec` | Execute command, return stdout/stderr |
-| POST | `/shell/stream` | Stream command output via SSE |
-
-### Code Execution
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/code/execute` | Run code (python, javascript, typescript, go, rust, bash) |
-
-### Files
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/file/read?path=...` | Read file content |
-| POST | `/file/write` | Write file content |
-| GET | `/file/list?path=...` | List directory contents |
-| POST | `/file/upload` | Upload file (multipart) |
-| GET | `/file/download?path=...` | Download file |
-
-### Browser (chromiumoxide)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/browser/goto` | Navigate to URL, return title |
-| POST | `/browser/screenshot` | Take screenshot, return base64 PNG |
-| POST | `/browser/evaluate` | Execute JavaScript, return result |
-| POST | `/browser/click` | Click element by CSS selector |
-| POST | `/browser/type` | Type text into element |
-| GET | `/browser/status` | Check if browser is running |
-
-### Skills
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/skills` | List all skills |
-| POST | `/skills` | Create a new skill |
-| GET | `/skills/search?q=...` | Search skills by name/description |
-| GET | `/skills/{name}` | Get skill by name |
-| PUT | `/skills/{name}` | Update skill |
-| DELETE | `/skills/{name}` | Delete skill |
-| POST | `/skills/{name}/scripts/{script}` | Execute skill script |
-
-### Factory (Skill Creation Dialogue)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/factory/start` | Start skill creation session |
-| POST | `/factory/continue` | Continue with user input |
-| POST | `/factory/check` | Check for trigger phrases |
-
-### TEE (Trusted Execution Environment)
-
-*Requires `--features tee` build flag*
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/tee/info` | Get TEE environment info |
-| POST | `/tee/quote` | Generate attestation quote |
-| POST | `/tee/derive-key` | Derive key from path |
-| POST | `/tee/sign` | Sign data with TEE key |
-| POST | `/tee/verify` | Verify signature |
-| POST | `/tee/emit-event` | Emit TEE event |
-
-## Usage Examples
-
-### Shell Execution
+### 1. Browse the catalog
 
 ```bash
-curl -X POST http://localhost:8080/shell/exec \
-  -H "Content-Type: application/json" \
-  -d '{"command": "echo hello && uname -a"}'
+nixosandbox catalog
+nixosandbox catalog --filter claude
+nixosandbox catalog --json | jq '.agents | keys'
 ```
 
-### Code Execution
+### 2. Create a sandbox
 
 ```bash
-curl -X POST http://localhost:8080/code/execute \
-  -H "Content-Type: application/json" \
-  -d '{"code": "print(2 + 2)", "language": "python"}'
+# From catalog packages (compose what you need)
+nixosandbox create --with claude-code,bash,git --network off --name my-sandbox --json
+
+# From a built-in profile
+nixosandbox create --profile strict --json
+
+# With a host workspace mounted
+nixosandbox create --with opencode,bash --workspace ~/projects/myapp --json
 ```
 
-### Browser Automation
+### 3. Execute commands
 
 ```bash
-# Navigate and get title
-curl -X POST http://localhost:8080/browser/goto \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
+# Run a single command
+nixosandbox exec <session-id> -- echo "Hello from sandbox"
 
-# Take screenshot
-curl -X POST http://localhost:8080/browser/screenshot \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}' | jq -r '.data' | base64 -d > screenshot.png
+# Stream NDJSON events (for programmatic use)
+nixosandbox exec <session-id> --json -- python3 -c "print('hello')"
 
-# Execute JavaScript
-curl -X POST http://localhost:8080/browser/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "script": "document.title"}'
+# With extra environment variables
+nixosandbox exec <session-id> --env API_KEY=test -- node script.js
 ```
 
-### File Operations
+### 4. Interactive shell
 
 ```bash
-# Write file
-curl -X POST http://localhost:8080/file/write \
-  -H "Content-Type: application/json" \
-  -d '{"path": "/tmp/test.txt", "content": "Hello, World!"}'
-
-# Read file
-curl "http://localhost:8080/file/read?path=/tmp/test.txt"
-
-# List directory
-curl "http://localhost:8080/file/list?path=/tmp"
+nixosandbox enter <session-id>
 ```
 
-### Skills
+### 5. Manage sessions
 
 ```bash
-# Create a skill
-curl -X POST http://localhost:8080/skills \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-helper",
-    "description": "A helpful skill",
-    "body": "Instructions for the skill..."
-  }'
-
-# Search skills
-curl "http://localhost:8080/skills/search?q=helper"
+nixosandbox list                    # list all sessions
+nixosandbox list --json             # as JSON
+nixosandbox status <session-id>     # detailed session info
+nixosandbox destroy <session-id>    # clean up
 ```
 
-## Configuration
+## CLI reference
 
-Environment variables:
+| Command | Description |
+|---------|-------------|
+| `create` | Create a new sandbox session |
+| `exec` | Execute a command inside a sandbox |
+| `enter` | Enter a sandbox interactively (bash) |
+| `list` | List active sandbox sessions |
+| `destroy` | Destroy a sandbox session |
+| `status` | Show detailed session status |
+| `build` | Build a rootfs without creating a session |
+| `catalog` | List available packages from the catalog |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8080` | API server port |
-| `WORKSPACE` | `/home/sandbox/workspace` | Default working directory |
-| `DISPLAY` | `:99` | X11 display for browser |
-| `CDP_PORT` | `9222` | Chrome DevTools Protocol port |
-| `SKILLS_DIR` | `./skills` | Skills storage directory |
-| `BROWSER_HEADLESS` | `true` | Run browser in headless mode |
-| `BROWSER_EXECUTABLE` | (auto-detect) | Path to Chromium binary |
-| `BROWSER_VIEWPORT_WIDTH` | `1280` | Default viewport width |
-| `BROWSER_VIEWPORT_HEIGHT` | `720` | Default viewport height |
-| `BROWSER_TIMEOUT` | `30` | Default operation timeout (seconds) |
+### `create` flags
+
+| Flag | Description |
+|------|-------------|
+| `--with <pkg1,pkg2,...>` | Compose from catalog packages |
+| `--profile <name>` | Use a built-in profile |
+| `--spec <file>` | Use a custom JSON spec file |
+| `--network <off\|full>` | Network mode (default: `off`) |
+| `--workspace <path>` | Mount host directory as `/workspace` |
+| `--name <name>` | Human-readable session name |
+| `--agent <id>` | Agent identifier (e.g. `claude:opus-4-6`) |
+| `--description <text>` | Purpose of this sandbox |
+| `--json` | Output as JSON |
+
+`--with`, `--profile`, and `--spec` are mutually exclusive.
+
+## Catalog
+
+The catalog merges two sources:
+
+**AI agents** from [numtide/llm-agents.nix](https://github.com/numtide/llm-agents.nix) — all 88+ packages exposed dynamically, automatically updated when the flake input is bumped:
+
+| Agent | Description |
+|-------|-------------|
+| `amp` | Sourcegraph coding agent |
+| `claude-code` | Anthropic's CLI coding agent |
+| `codex` | OpenAI's coding agent |
+| `copilot-cli` | GitHub Copilot CLI |
+| `cursor-agent` | Cursor's headless agent |
+| `droid` | Factory AI's development agent |
+| `forge` | Code forging agent |
+| `gemini-cli` | Google Gemini CLI |
+| `goose-cli` | Block's coding agent |
+| `hermes-agent` | Nous Research self-improving agent |
+| `jules` | Google's async coding agent |
+| `openclaw` | OpenClaw AI assistant |
+| `opencode` | Open-source coding agent |
+| `pi` | Pi coding agent |
+| `qwen-code` | Alibaba's coding agent |
+| ... | 88+ agents total — run `nixosandbox catalog` to see all |
+
+**Development tools** from nixpkgs:
+
+`python312` `nodejs_22` `rustc` `cargo` `go` `git` `coreutils` `bash` `findutils` `gnugrep` `gnused` `gawk` `gnumake` `gcc` `gnutar` `gzip` `curl` `cacert` `ripgrep` `fd` `jq` `less` `zsh` `nix`
+
+## Built-in profiles
+
+| Profile | Network | Packages | Use case |
+|---------|---------|----------|----------|
+| `strict` | off | coreutils, bash, cacert | Minimal, locked-down |
+| `offline-review` | off | git, coreutils, bash, grep, sed, jq | Code review without network |
+| `build-install` | full | node, python, rust, git, gcc, make | Building and installing |
+| `debug-network` | full | node, python, curl, netcat, dig | Network debugging |
+
+## How it works
+
+### Rootfs composition
+
+When you run `nixosandbox create --with claude-code,bash`, the CLI:
+
+1. Resolves `claude-code` and `bash` from the catalog (agents first, then tools)
+2. Calls `mkAgentSandbox` which delegates to `mkSandboxRootfs`
+3. Nix builds a merged environment with all requested packages
+4. Creates a minimal rootfs directory tree with symlinks into `/nix/store`
+
+The rootfs contains: `/bin`, `/lib`, `/etc` (passwd, hosts, certs), `/usr/bin/env`, and mount points for `/workspace`, `/home/sandbox`, `/cache`, `/tmp`, `/dev`, `/proc`, `/nix/store`.
+
+### Sandbox execution
+
+When you run `nixosandbox exec <id> -- command`:
+
+1. Loads session metadata (rootfs path, network mode, profile)
+2. Detects bubblewrap (native Linux or Docker sidecar on macOS)
+3. Builds bwrap arguments:
+   - `--ro-bind <rootfs> /` (read-only root)
+   - `--ro-bind /nix/store /nix/store` (symlink targets)
+   - `--bind <workspace> /workspace` (writable)
+   - `--bind <home> /home/sandbox` (writable)
+   - `--bind <cache> /cache` (writable)
+   - `--tmpfs /tmp`, `--dev /dev`, `--proc /proc`
+   - Namespace isolation (`--unshare-pid`, `--unshare-uts`, etc.)
+   - `--unshare-net` when network is `off`
+   - `--die-with-parent`, `--new-session` (lifecycle safety)
+4. Spawns bwrap with the constructed arguments
+5. In `--json` mode, streams NDJSON lifecycle/stdout/stderr/result events
+
+### Session storage
+
+Sessions live in `~/.local/share/nixosandbox/sessions/<session-id>/`:
+
+```
+<session-id>/
+  metadata.json    # session config, profile, rootfs path
+  workspace/       # working directory (or symlink to --workspace)
+  home/            # persistent home directory
+  cache/           # persistent cache
+```
+
+## Custom spec files
+
+Create a JSON spec for full control:
+
+```json
+{
+  "name": "my-environment",
+  "packages": ["nodejs_22", "python312", "git"],
+  "env": { "NODE_ENV": "development" },
+  "network": "off",
+  "namespaces": ["pid", "mount", "uts", "ipc", "net"],
+  "writable": ["/workspace", "/home/sandbox", "/tmp"]
+}
+```
+
+```bash
+nixosandbox create --spec my-env.json --json
+```
+
+## Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `NIXOSANDBOX_FLAKE_ROOT` | Path to the nixosandbox flake (for development) |
+| `NIXOSANDBOX_DATA_DIR` | Override session storage directory |
+| `NIXOSANDBOX_BWRAP_PATH` | Explicit path to bwrap binary |
+| `NIXOSANDBOX_NO_DOCKER` | Set to `1` to disable Docker fallback on macOS |
+
+## Nix flake outputs
+
+```nix
+{
+  # CLI binary
+  packages.x86_64-linux.nixosandbox
+  packages.x86_64-linux.default
+
+  # Pre-built profile rootfs
+  packages.x86_64-linux.sandbox-strict
+  packages.x86_64-linux.sandbox-build-install
+  packages.x86_64-linux.sandbox-offline-review
+  packages.x86_64-linux.sandbox-debug-network
+
+  # Library functions
+  lib.mkSandboxRootfs   # { name, packages, env? } -> rootfs derivation
+  lib.mkAgentSandbox    # { name, packages } -> rootfs (catalog-aware)
+
+  # Queryable catalog
+  catalog.agents        # attrset of agent packages
+  catalog.tools         # attrset of tool packages
+}
+```
+
+## Project structure
+
+```
+nixosandbox/
+  crates/nixosandbox/       # Rust CLI
+    src/
+      main.rs               # Command handlers
+      cli.rs                # Argument parsing (clap)
+      session.rs            # Session CRUD and metadata
+      nix.rs                # Nix build integration
+      bubblewrap.rs         # bwrap detection
+      docker.rs             # Docker sidecar (macOS)
+      plan_builder.rs       # bwrap argv construction
+      spec.rs               # Profile/spec loading
+  nix/
+    catalog.nix             # Unified agent + tool catalog
+    mkSandboxRootfs.nix     # Rootfs builder
+    mkAgentSandbox.nix      # Catalog-aware composition
+    profiles/               # Built-in profile specs (JSON)
+  packages/
+    pi-sandbox-extension/   # TypeScript Pi agent integration
+  .github/workflows/
+    ci.yml                  # CI: Rust, TypeScript, Nix, agent smoke tests
+```
+
+## Pi extension
+
+nixosandbox includes a [Pi coding agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension that registers 7 sandbox tools: `sandbox_run`, `sandbox_read_file`, `sandbox_write_file`, `sandbox_list_files`, `sandbox_session_info`, `sandbox_catalog`, and `sandbox_browser`.
+
+### Setup
+
+1. Build the extension:
+
+```bash
+cd packages/pi-sandbox-extension
+npm install
+npm run build
+```
+
+2. Create an extension wrapper at `.pi/extensions/sandbox.ts` (project-local) or `~/.pi/agent/extensions/sandbox.ts` (global):
+
+```typescript
+import sandboxExtension from "<path-to-repo>/packages/pi-sandbox-extension/dist/index.js";
+
+export default function (pi: any) {
+  sandboxExtension(pi, {
+    // Absolute path to the nixosandbox binary (cargo build --release)
+    binaryPath: "<path-to-repo>/crates/nixosandbox/target/release/nixosandbox",
+  });
+}
+```
+
+3. Or load it directly with the `-e` flag:
+
+```bash
+pi -e .pi/extensions/sandbox.ts
+```
+
+### What the tools do
+
+| Tool | Description |
+|------|-------------|
+| `sandbox_run` | Execute commands in an isolated sandbox (creates session on first use) |
+| `sandbox_read_file` | Read a file from the sandbox workspace |
+| `sandbox_write_file` | Write a file to the sandbox workspace |
+| `sandbox_list_files` | List files in the sandbox workspace |
+| `sandbox_session_info` | Show session details or list all sessions |
+| `sandbox_catalog` | List available agent and tool packages |
+| `sandbox_browser` | Browser automation (goto, screenshot, evaluate, click, type) |
+
+### Environment
+
+Set `NIXOSANDBOX_FLAKE_ROOT` to the repo root if the binary can't find `flake.nix` automatically:
+
+```bash
+export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixosandbox
+```
 
 ## Testing
 
 ```bash
-cd sandbox-rs
+# Rust unit tests
+cd crates/nixosandbox && cargo test
 
-# Run unit tests
-cargo test --bin sandbox-api
+# Nix evaluation
+nix flake check
 
-# Run integration tests (requires running server)
-PORT=9090 cargo run &
-TEST_BASE_URL=http://localhost:9090 cargo test
-
-# Run browser tests (requires Chromium)
-TEST_BASE_URL=http://localhost:9090 cargo test --test browser_test -- --ignored
+# TypeScript typecheck
+cd packages/pi-sandbox-extension && npx tsc --noEmit
 ```
 
-## Project Structure
-
-```
-sandbox-rs/
-├── Cargo.toml
-├── src/
-│   ├── main.rs           # Entry point, router setup
-│   ├── config.rs         # Environment configuration
-│   ├── error.rs          # Error types
-│   ├── state.rs          # Application state
-│   ├── browser/          # Browser automation
-│   │   ├── mod.rs
-│   │   ├── service.rs    # BrowserService with lazy init
-│   │   └── types.rs      # Request/response types
-│   ├── handlers/         # HTTP handlers
-│   │   ├── mod.rs
-│   │   ├── health.rs
-│   │   ├── shell.rs
-│   │   ├── code.rs
-│   │   ├── file.rs
-│   │   ├── browser.rs
-│   │   ├── skills.rs
-│   │   ├── factory.rs
-│   │   └── tee.rs
-│   ├── skills/           # Skills system
-│   │   ├── mod.rs
-│   │   ├── registry.rs   # Filesystem-based registry
-│   │   ├── types.rs      # Skill types
-│   │   └── factory.rs    # Skill creation dialogue
-│   └── tee/              # TEE integration (feature-gated)
-│       └── mod.rs
-└── tests/
-    ├── health_test.rs
-    ├── shell_test.rs
-    ├── code_test.rs
-    ├── file_test.rs
-    ├── browser_test.rs
-    ├── skills_test.rs
-    ├── factory_test.rs
-    └── tee_test.rs
-```
+CI runs agent smoke tests that create sandboxes with each agent (claude-code, codex, opencode, amp, droid, pi, openclaw, hermes-agent, jules) and verify the binary launches inside bwrap.
 
 ## License
 

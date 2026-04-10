@@ -1,0 +1,228 @@
+name: CI
+
+on:
+  push:
+    branches: [master, pi-sandbox-refactor]
+  pull_request:
+    branches: [master]
+
+jobs:
+  rust-tests:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/nixosandbox/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('crates/nixosandbox/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Build
+        working-directory: crates/nixosandbox
+        run: cargo build
+
+      - name: Test
+        working-directory: crates/nixosandbox
+        run: cargo test
+
+  typescript-check:
+    name: TypeScript typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        working-directory: packages/pi-sandbox-extension
+        run: npm install
+
+      - name: Typecheck
+        working-directory: packages/pi-sandbox-extension
+        run: npx tsc --noEmit
+
+  nix-eval:
+    name: Nix evaluation & catalog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            extra-substituters = https://cache.numtide.com
+            extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
+
+      - name: Flake check
+        run: nix flake check --accept-flake-config
+
+      - name: Evaluate catalog agents
+        run: |
+          nix eval --accept-flake-config .#catalog.agents --apply 'x: builtins.attrNames x'
+
+      - name: Evaluate catalog tools
+        run: |
+          nix eval --accept-flake-config .#catalog.tools --apply 'x: builtins.attrNames x'
+
+      - name: Verify existing profiles
+        run: |
+          nix eval --accept-flake-config .#packages.x86_64-linux.sandbox-strict.name
+
+  nix-build:
+    name: Nix build & smoke test
+    runs-on: ubuntu-latest
+    needs: [rust-tests, nix-eval]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            extra-substituters = https://cache.numtide.com
+            extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
+
+      - name: Build nixosandbox CLI
+        run: nix build --accept-flake-config .#nixosandbox
+
+      - name: Test catalog subcommand
+        run: |
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json | python3 -m json.tool > /dev/null
+          echo "Catalog JSON is valid"
+
+      - name: Verify catalog agent count and new packages
+        run: |
+          catalog_json=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json)
+          agent_count=$(echo "$catalog_json" | python3 -c "import sys, json; d=json.load(sys.stdin); print(len(d['agents']))")
+          echo "Catalog agent count: $agent_count"
+          # Threshold is conservative — guards against empty catalog, not exact upstream count.
+          # llm-agents.nix is a third-party input that may fluctuate; 50 is well above any realistic minimum.
+          [ "$agent_count" -gt 50 ] || { echo "ERROR: expected >50 agents, got $agent_count"; exit 1; }
+          echo "$catalog_json" | python3 -c '
+          import sys, json
+          d = json.load(sys.stdin)
+          agents = d["agents"]
+          missing = [n for n in ["openclaw", "hermes-agent", "jules"] if n not in agents]
+          if missing:
+              print(f"ERROR: missing agents: {missing}", file=sys.stderr)
+              sys.exit(1)
+          print(f"All expected agents present in {len(agents)} total")
+          '
+
+      - name: Test catalog filter
+        run: |
+          output=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --filter claude)
+          echo "$output"
+          echo "$output" | grep -q "claude-code"
+
+      - name: Test --with rootfs creation
+        run: |
+          output=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox create \
+            --with bash,coreutils --network off --name ci-smoke --json)
+          echo "$output"
+          session_id=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['sessionId'])")
+          echo "Session created: $session_id"
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy "$session_id"
+          echo "Session destroyed"
+
+      - name: Test mutual exclusivity
+        run: |
+          if NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox create --profile strict --with bash 2>&1; then
+            echo "ERROR: should have failed" && exit 1
+          else
+            echo "Mutual exclusivity check passed"
+          fi
+
+  agent-smoke-tests:
+    name: Agent sandbox smoke tests
+    runs-on: ubuntu-latest
+    needs: [nix-build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - agent: claude-code
+            binary: claude
+            check: "--version"
+          - agent: codex
+            binary: codex
+            check: "--help"
+          - agent: opencode
+            binary: opencode
+            check: "--version"
+          - agent: amp
+            binary: amp
+            check: "--help"
+          - agent: droid
+            binary: droid
+            check: "--version"
+          - agent: pi
+            binary: pi
+            check: "--help"
+          - agent: openclaw
+            binary: openclaw
+            check: "--help"
+          - agent: hermes-agent
+            binary: hermes
+            check: "--version"
+          - agent: jules
+            binary: jules
+            check: "--help"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            extra-substituters = https://cache.numtide.com
+            extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
+
+      - name: Install and verify bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          echo "bwrap path: $(which bwrap)"
+          bwrap --version
+          # Verify bwrap can actually create sandboxes.
+          # Ubuntu 24.04 may restrict user namespaces via AppArmor (containers/bubblewrap#632).
+          if ! bwrap --ro-bind / / --dev /dev --proc /proc -- echo "bwrap sandbox works"; then
+            echo "bwrap failed — relaxing AppArmor unprivileged userns restriction"
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            bwrap --ro-bind / / --dev /dev --proc /proc -- echo "bwrap sandbox works after sysctl fix"
+          fi
+
+      - name: Build nixosandbox CLI
+        run: nix build --accept-flake-config .#nixosandbox
+
+      - name: Create sandbox with ${{ matrix.agent }}
+        run: |
+          echo "Creating sandbox with ${{ matrix.agent }} + bash..."
+          output=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox create \
+            --with ${{ matrix.agent }},bash --network off --name ci-${{ matrix.agent }} --json)
+          echo "$output"
+          echo "$output" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Session: {d[\"sessionId\"]}, Profile: {d[\"profile\"]}')"
+          session_id=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['sessionId'])")
+          echo "SESSION_ID=$session_id" >> "$GITHUB_ENV"
+
+      - name: Verify ${{ matrix.agent }} binary launches
+        run: |
+          echo "Running: ${{ matrix.binary }} ${{ matrix.check }}"
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox exec "$SESSION_ID" --json \
+            -- ${{ matrix.binary }} ${{ matrix.check }}
+          echo "${{ matrix.agent }} smoke test passed"
+
+      - name: Cleanup session
+        if: always()
+        run: |
+          if [ -n "$SESSION_ID" ]; then
+            NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy "$SESSION_ID" 2>/dev/null || true
+          fi

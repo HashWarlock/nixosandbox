@@ -1,0 +1,8 @@
+{
+  "name": "offline-review",
+  "packages": ["git", "cacert", "coreutils", "bash", "gnugrep", "gnused", "gawk", "findutils", "jq"],
+  "env": {},
+  "network": "off",
+  "namespaces": ["pid", "mount", "uts", "ipc", "net"],
+  "writable": ["/workspace", "/home/sandbox", "/tmp"]
+}
