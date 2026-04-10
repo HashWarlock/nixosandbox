@@ -32,8 +32,13 @@ export default function sandboxExtension(
   const browserManager = new BrowserManager();
 
   // Register tools
+  // Pi requires `required` array in JSON Schema; TypeBox omits it for all-optional schemas
   const tools = createSandboxTools(binaryPath, browserManager);
   for (const tool of tools) {
+    const params = tool.parameters as Record<string, unknown>;
+    if (params.type === "object" && !params.required) {
+      params.required = [];
+    }
     pi.registerTool(tool);
   }
 

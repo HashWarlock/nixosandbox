@@ -118,3 +118,4 @@ crates/nixosandbox/target/
 
 # Protocol tests
 tests/protocol/node_modules/
+.pi/

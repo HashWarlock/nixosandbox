@@ -163,7 +163,7 @@ export function createSandboxTools(
         agent,
         description,
         timeoutMs,
-      } = args as {
+      } = (args ?? {}) as {
         command: string[];
         sessionId?: string;
         with?: string[];
@@ -322,7 +322,7 @@ export function createSandboxTools(
       ),
     }),
     async execute(args: unknown): Promise<string> {
-      const { filter } = args as { filter?: string };
+      const { filter } = (args ?? {}) as { filter?: string };
       const catalog = catalogPackages(binaryPath, filter);
 
       const lines: string[] = [];

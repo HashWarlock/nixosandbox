@@ -282,6 +282,59 @@ nixosandbox/
     ci.yml                  # CI: Rust, TypeScript, Nix, agent smoke tests
 ```
 
+## Pi extension
+
+nixosandbox includes a [Pi coding agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension that registers 7 sandbox tools: `sandbox_run`, `sandbox_read_file`, `sandbox_write_file`, `sandbox_list_files`, `sandbox_session_info`, `sandbox_catalog`, and `sandbox_browser`.
+
+### Setup
+
+1. Build the extension:
+
+```bash
+cd packages/pi-sandbox-extension
+npm install
+npm run build
+```
+
+2. Create an extension wrapper at `.pi/extensions/sandbox.ts` (project-local) or `~/.pi/agent/extensions/sandbox.ts` (global):
+
+```typescript
+import sandboxExtension from "<path-to-repo>/packages/pi-sandbox-extension/dist/index.js";
+
+export default function (pi: any) {
+  sandboxExtension(pi, {
+    // Absolute path to the nixosandbox binary (cargo build --release)
+    binaryPath: "<path-to-repo>/crates/nixosandbox/target/release/nixosandbox",
+  });
+}
+```
+
+3. Or load it directly with the `-e` flag:
+
+```bash
+pi -e .pi/extensions/sandbox.ts
+```
+
+### What the tools do
+
+| Tool | Description |
+|------|-------------|
+| `sandbox_run` | Execute commands in an isolated sandbox (creates session on first use) |
+| `sandbox_read_file` | Read a file from the sandbox workspace |
+| `sandbox_write_file` | Write a file to the sandbox workspace |
+| `sandbox_list_files` | List files in the sandbox workspace |
+| `sandbox_session_info` | Show session details or list all sessions |
+| `sandbox_catalog` | List available agent and tool packages |
+| `sandbox_browser` | Browser automation (goto, screenshot, evaluate, click, type) |
+
+### Environment
+
+Set `NIXOSANDBOX_FLAKE_ROOT` to the repo root if the binary can't find `flake.nix` automatically:
+
+```bash
+export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixosandbox
+```
+
 ## Testing
 
 ```bash
