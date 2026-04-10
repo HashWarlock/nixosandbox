@@ -97,7 +97,16 @@ jobs:
 
       - name: Test grouped catalog output
         run: |
-          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json --grouped | python3 -m json.tool > /dev/null
+          grouped_json=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json --grouped)
+          echo "$grouped_json" | python3 -m json.tool > /dev/null
+          echo "$grouped_json" | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          missing = [key for key in ["agentCategories", "tools"] if key not in data]
+          if missing:
+              print(f"ERROR: grouped catalog JSON missing keys: {missing}", file=sys.stderr)
+              sys.exit(1)
+          '
           echo "Grouped catalog JSON is valid"
 
       - name: Verify CLI alias help parity

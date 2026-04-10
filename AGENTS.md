@@ -49,7 +49,7 @@ NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixo destroy <session-id>
 5. **session.rs** creates a session directory under `~/.local/share/nixosandbox/sessions/<id>/` with metadata, workspace, home, and cache dirs
 6. **User runs** `nixo exec <id> -- command`
 7. **plan_builder.rs** constructs bwrap argv: `--ro-bind <rootfs> /`, `--ro-bind /nix/store /nix/store`, writable bind mounts for workspace/home/cache, namespace flags, env vars
-8. **main.rs** spawns bwrap (detected path from `bubblewrap::detect()`) with the constructed argv
+8. **lib.rs** spawns bwrap (detected path from `bubblewrap::detect()`) with the constructed argv
 
 ### Key design decisions
 
@@ -65,7 +65,7 @@ NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixo destroy <session-id>
 | Module | Owns |
 |--------|------|
 | `cli.rs` | clap argument parsing |
-| `main.rs` | command dispatch, `cmd_create`, `cmd_exec`, `cmd_catalog`, etc. |
+| `lib.rs` | command dispatch, `cmd_create`, `cmd_exec`, `cmd_catalog`, etc. |
 | `session.rs` | session CRUD, metadata serialization, directory layout |
 | `nix.rs` | `find_flake_root()`, `build_profile()`, `build_with_catalog()`, `query_catalog()` (filters non-derivation attrs via `filterDrvs` before reading `.meta.description`) |
 | `plan_builder.rs` | bwrap argv construction (`--ro-bind`, `--bind`, `--unshare-*`, `--setenv`) |
