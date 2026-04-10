@@ -3,6 +3,7 @@ class Nixo < Formula
   homepage "https://github.com/HashWarlock/nixosandbox"
   version "0.1.0"
 
+  # Replace the placeholder sha256 values below with the published release checksums.
   on_macos do
     on_arm do
       url "https://github.com/HashWarlock/nixosandbox/releases/download/v#{version}/nixo-aarch64-apple-darwin.tar.gz"
@@ -12,6 +13,13 @@ class Nixo < Formula
     on_intel do
       url "https://github.com/HashWarlock/nixosandbox/releases/download/v#{version}/nixo-x86_64-apple-darwin.tar.gz"
       sha256 "REPLACE_WITH_X86_64_SHA256"
+    end
+  end
+
+  on_linux do
+    on_intel do
+      url "https://github.com/HashWarlock/nixosandbox/releases/download/v#{version}/nixo-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "REPLACE_WITH_LINUX_X86_64_SHA256"
     end
   end
 

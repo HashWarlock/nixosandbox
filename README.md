@@ -33,7 +33,7 @@ nixo CLI (Rust)
 
 ## Install
 
-### Homebrew (recommended)
+### Homebrew tap template
 
 ```bash
 brew install <your-tap>/nixo
@@ -41,7 +41,7 @@ nixo --help
 nixosandbox --help  # compatibility alias
 ```
 
-If you maintain a tap, start from [`packaging/homebrew/nixo.rb`](packaging/homebrew/nixo.rb) and update the release URLs and sha256 values for each version you publish.
+[packaging/homebrew/nixo.rb](packaging/homebrew/nixo.rb) is a tap bootstrap template, not a ready-to-publish formula. Replace the release URLs and placeholder sha256 values before publishing your tap.
 
 ### From source (requires Nix with flakes)
 
