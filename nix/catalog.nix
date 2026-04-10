@@ -5,53 +5,10 @@
 #
 # Usage: import ./catalog.nix { pkgs = ...; llm-agents-pkgs = ...; }
 { pkgs, llm-agents-pkgs }:
-
-let
-  # Helper: only inherit a package if it exists in the source attrset.
-  # llm-agents.nix package availability varies by platform.
-  pickExisting = src: names:
-    builtins.listToAttrs (
-      builtins.filter (x: x != null) (
-        map (name:
-          if src ? ${name}
-          then { inherit name; value = src.${name}; }
-          else null
-        ) names
-      )
-    );
-in
 {
-  agents = pickExisting llm-agents-pkgs [
-    # AI Coding Agents
-    "amp"
-    "claude-code"
-    "codex"
-    "copilot-cli"
-    "crush"
-    "cursor-agent"
-    "droid"
-    "forge"
-    "gemini-cli"
-    "goose-cli"
-    "iflow-cli"
-    "kilocode-cli"
-    "mistral-vibe"
-    "nanocoder"
-    "opencode"
-    "pi"
-    "qoder-cli"
-    "qwen-code"
-    # Claude Code Ecosystem
-    "claudebox"
-    "catnip"
-    "claude-code-router"
-    # ACP Ecosystem
-    "claude-code-acp"
-    "codex-acp"
-    # Utilities
-    "sidecar"
-    "sandbox-runtime"
-  ];
+  # All packages from numtide/llm-agents.nix.
+  # 'default' is a meta-alias present in every flake packages output; strip it.
+  agents = builtins.removeAttrs llm-agents-pkgs [ "default" ];
 
   tools = {
     # Languages & runtimes
