@@ -84,6 +84,12 @@ fn require_nix_cli_or_exit() {
     });
 }
 
+fn require_local_nix_cli_or_exit() {
+    if cfg!(target_os = "linux") {
+        require_nix_cli_or_exit();
+    }
+}
+
 fn resolve_spec(profile: Option<String>, spec_file: Option<String>) -> spec::SandboxSpec {
     match (profile, spec_file) {
         (Some(p), None) => {
@@ -118,7 +124,7 @@ fn build_rootfs_for_spec(spec: &spec::SandboxSpec, profile: &Option<String>) -> 
         }
         std::process::exit(1);
     }
-    require_nix_cli_or_exit();
+    require_local_nix_cli_or_exit();
     let rootfs = if let Some(p) = profile {
         nix::build_profile(p)
     } else {
@@ -168,7 +174,7 @@ fn cmd_create(
                 std::process::exit(1);
             }
         }
-        require_nix_cli_or_exit();
+        require_local_nix_cli_or_exit();
         let rootfs = nix::build_with_catalog(packages, &network).unwrap_or_else(|e| {
             eprintln!("nix build failed: {e}");
             std::process::exit(1);

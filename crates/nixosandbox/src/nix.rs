@@ -272,21 +272,33 @@ mod tests {
         std::env::temp_dir().join(format!("nixosandbox-{name}-{nanos}"))
     }
 
+    struct PathGuard {
+        original_path: Option<std::ffi::OsString>,
+        temp_dir: std::path::PathBuf,
+    }
+
+    impl Drop for PathGuard {
+        fn drop(&mut self) {
+            match self.original_path.take() {
+                Some(path) => std::env::set_var("PATH", path),
+                None => std::env::remove_var("PATH"),
+            }
+            let _ = fs::remove_dir_all(&self.temp_dir);
+        }
+    }
+
     #[test]
     fn require_nix_cli_reports_install_guidance_when_nix_is_missing() {
         let _guard = env_lock().lock().unwrap();
-        let original_path = std::env::var_os("PATH");
         let empty_path = unique_temp_dir("missing-nix-path");
         fs::create_dir_all(&empty_path).unwrap();
+        let _path_guard = PathGuard {
+            original_path: std::env::var_os("PATH"),
+            temp_dir: empty_path.clone(),
+        };
         std::env::set_var("PATH", &empty_path);
 
         let err = require_nix_cli().unwrap_err();
-
-        match original_path {
-            Some(path) => std::env::set_var("PATH", path),
-            None => std::env::remove_var("PATH"),
-        }
-        fs::remove_dir_all(&empty_path).unwrap();
 
         assert_eq!(
             err,
