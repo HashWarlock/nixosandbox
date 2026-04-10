@@ -2,7 +2,6 @@ class Nixo < Formula
   desc "Reproducible, isolated sandbox environments for AI coding agents"
   homepage "https://github.com/HashWarlock/nixo"
   version "0.1.1"
-  depends_on "nix"
 
   on_macos do
     on_arm do
