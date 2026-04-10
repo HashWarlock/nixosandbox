@@ -278,6 +278,31 @@ jobs:
           session_id=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['sessionId'])")
           echo "SESSION_ID=$session_id" >> "$GITHUB_ENV"
 
+      - name: Prepare privileged sidecar for CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          data_dir="${NIXOSANDBOX_DATA_DIR:-$HOME/.local/share/nixosandbox}"
+          mkdir -p "$data_dir"
+
+          docker rm -f nixosandbox-sidecar >/dev/null 2>&1 || true
+          docker build --platform linux/amd64 -t nixosandbox-sidecar:latest \
+            -f "$PWD/docker/nixosandbox-sidecar.Dockerfile" "$PWD"
+
+          docker run -d \
+            --name nixosandbox-sidecar \
+            --platform linux/amd64 \
+            --privileged \
+            --security-opt seccomp=unconfined \
+            --security-opt apparmor=unconfined \
+            -v "$data_dir:/nixosandbox/sessions" \
+            -v "nixosandbox-nix:/nix:ro" \
+            nixosandbox-sidecar:latest \
+            sleep infinity
+
+          # Preflight bwrap inside sidecar to fail early if mount permissions are still blocked.
+          docker exec nixosandbox-sidecar sh -lc 'bwrap --dev /dev --proc /proc --ro-bind / / -- true'
+
       - name: Execute command in sandbox via Docker sidecar
         shell: bash
         run: |
