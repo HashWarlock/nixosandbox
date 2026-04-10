@@ -44,12 +44,20 @@ nixosandbox --help  # compatibility alias
 
 [`Formula/nixo.rb`](Formula/nixo.rb) is the in-repo Homebrew formula for the `HashWarlock/nixo` tap. It installs `nixo` as the primary executable and `nixosandbox` as a compatibility symlink. The packaged release ships `bin/` plus `flake/` assets, so the installed command does not require a checkout of this repository. You still need a working Nix runtime on the host because the CLI shells out to `nix` at runtime. Replace the placeholder sha256 values before publishing a release.
 
-Before opening your tap PR, run:
+Before publishing or updating the formula, run:
 
 ```bash
 brew audit --strict nixo
 brew test nixo
 ```
+
+To publish the first tap-backed release from this repo:
+
+1. Merge the formula and release workflow to `master`.
+2. Create a version tag such as `v0.1.0`.
+3. Wait for the release workflow to upload the tarballs.
+4. Compute the real archive checksums and replace the placeholder `sha256` values in [`Formula/nixo.rb`](Formula/nixo.rb).
+5. Commit that formula update on `master`, then users can install with `brew tap HashWarlock/nixo && brew install nixo`.
 
 ### From source (requires Nix with flakes)
 
@@ -117,6 +125,14 @@ nixo list --json             # as JSON
 nixo status <session-id>     # detailed session info
 nixo destroy <session-id>    # clean up
 ```
+
+## AgentSkills support
+
+This repo ships a reusable AgentSkills-compatible skill at [`.agents/skills/nixo-cli/SKILL.md`](.agents/skills/nixo-cli/SKILL.md).
+
+- Agents should prefer `nixo` in new instructions and treat `nixosandbox` as a compatibility alias.
+- Use the bundled skill when the task involves sandbox lifecycle operations, catalog queries, session-id workflows, or common CLI errors.
+- If your runtime supports the AgentSkills directory convention, copy the `nixo-cli` folder into that runtime's skills directory or install it from this repository using the runtime's skill-import flow.
 
 ## CLI reference
 

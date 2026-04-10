@@ -7,6 +7,12 @@ description: Use when requests involve nixo or nixosandbox sandbox lifecycle ope
 
 Use this skill for runtime-agnostic workflows around the `nixo` command line.
 
+## When not to use
+
+- Do not use this skill for Nix flake authoring or package derivation work unless the task explicitly centers on the `nixo` CLI workflow.
+- Do not use this skill when the user only needs raw `nix build`, `nix develop`, or `bubblewrap` commands outside a sandbox session flow.
+- Do not use this skill when another repo-local workflow overrides the CLI, such as project-specific wrapper scripts or extension-only APIs.
+
 ## Naming
 
 - Use `nixo` as the default command in all new instructions, prompts, and automation.
@@ -29,6 +35,14 @@ Use this skill for runtime-agnostic workflows around the `nixo` command line.
 - Prefer machine-readable output when the result feeds another step.
 - Use `list` before `destroy` if you need to confirm the active session set.
 - For automation, capture `sessionId` from `create --json` output and reuse it for `exec`, `status`, and `destroy`.
+
+## Input and output expectations
+
+- Prefer plain-text `nixo` commands for human guidance and shell examples.
+- Prefer `--json` for agent-to-agent handoff, scripts, or any step that will parse command output.
+- Treat `create --json` as the canonical machine-readable entrypoint because it returns the `sessionId` needed for later steps.
+- Keep JSON consumers on `nixo catalog --json` unless they explicitly need grouped categories, then use `nixo catalog --json --grouped`.
+- Emit `nixosandbox` only as a compatibility fallback when `nixo` is unavailable or the user asks for the legacy name.
 
 ## Common failure patterns
 
