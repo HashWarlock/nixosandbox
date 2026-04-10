@@ -1,7 +1,62 @@
-use std::process::{Command, Stdio};
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use crate::spec::SandboxSpec;
+
+const MISSING_NIX_CLI_ERROR: &str =
+    "nixo requires the Nix CLI on the host. Install Nix first, then try again.";
+
+fn is_executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        return path
+            .metadata()
+            .map(|meta| meta.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false);
+    }
+
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn find_nix_cli_on_path() -> Option<std::path::PathBuf> {
+    let path = std::env::var_os("PATH")?;
+
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join("nix");
+        if is_executable_file(&candidate) {
+            return Some(candidate);
+        }
+
+        #[cfg(windows)]
+        {
+            for ext in ["exe", "cmd", "bat"] {
+                let candidate = dir.join(format!("nix.{ext}"));
+                if is_executable_file(&candidate) {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+pub fn require_nix_cli() -> Result<(), String> {
+    if find_nix_cli_on_path().is_some() {
+        Ok(())
+    } else {
+        Err(MISSING_NIX_CLI_ERROR.to_string())
+    }
+}
 
 /// Find the flake root by looking for flake.nix.
 pub fn find_flake_root() -> Result<String, String> {
@@ -194,5 +249,48 @@ in {{ agents = extractMeta catalog.agents; tools = extractMeta catalog.tools; }}
             "nix eval failed: {}",
             String::from_utf8_lossy(&output.stderr)
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("nixosandbox-{name}-{nanos}"))
+    }
+
+    #[test]
+    fn require_nix_cli_reports_install_guidance_when_nix_is_missing() {
+        let _guard = env_lock().lock().unwrap();
+        let original_path = std::env::var_os("PATH");
+        let empty_path = unique_temp_dir("missing-nix-path");
+        fs::create_dir_all(&empty_path).unwrap();
+        std::env::set_var("PATH", &empty_path);
+
+        let err = require_nix_cli().unwrap_err();
+
+        match original_path {
+            Some(path) => std::env::set_var("PATH", path),
+            None => std::env::remove_var("PATH"),
+        }
+        fs::remove_dir_all(&empty_path).unwrap();
+
+        assert_eq!(
+            err,
+            "nixo requires the Nix CLI on the host. Install Nix first, then try again."
+        );
     }
 }

@@ -77,6 +77,13 @@ pub fn run_with_bin_name(bin_name: &str) {
     }
 }
 
+fn require_nix_cli_or_exit() {
+    nix::require_nix_cli().unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
+}
+
 fn resolve_spec(profile: Option<String>, spec_file: Option<String>) -> spec::SandboxSpec {
     match (profile, spec_file) {
         (Some(p), None) => {
@@ -111,6 +118,7 @@ fn build_rootfs_for_spec(spec: &spec::SandboxSpec, profile: &Option<String>) -> 
         }
         std::process::exit(1);
     }
+    require_nix_cli_or_exit();
     let rootfs = if let Some(p) = profile {
         nix::build_profile(p)
     } else {
@@ -160,6 +168,7 @@ fn cmd_create(
                 std::process::exit(1);
             }
         }
+        require_nix_cli_or_exit();
         let rootfs = nix::build_with_catalog(packages, &network).unwrap_or_else(|e| {
             eprintln!("nix build failed: {e}");
             std::process::exit(1);
@@ -563,6 +572,8 @@ fn cmd_build(profile: Option<String>, spec_file: Option<String>, json: bool) {
 }
 
 fn cmd_catalog(json: bool, grouped: bool, filter: Option<String>) {
+    require_nix_cli_or_exit();
+
     let catalog_json = nix::query_catalog().unwrap_or_else(|e| {
         eprintln!("error: {e}");
         std::process::exit(1);
