@@ -1,5 +1,6 @@
 mod bubblewrap;
 mod cli;
+mod catalog;
 mod docker;
 mod nix;
 mod plan_builder;
@@ -535,25 +536,50 @@ fn cmd_catalog(json: bool, filter: Option<String>) {
     }
 
     // Human-readable output
-    for (section, label) in [("agents", "Agents (from llm-agents.nix)"), ("tools", "Tools (from nixpkgs)")] {
-        if let Some(entries) = catalog.get(section).and_then(|v| v.as_object()) {
-            println!("{}:", label);
-            let mut names: Vec<&String> = entries.keys().collect();
-            names.sort();
-            for name in names {
-                let desc = entries[name]
-                    .get("description")
-                    .and_then(|d| d.as_str())
-                    .unwrap_or("");
-                if let Some(ref filt) = filter_lower {
-                    if !name.to_lowercase().contains(filt) && !desc.to_lowercase().contains(filt) {
-                        continue;
+    if let Some(entries) = catalog.get("agents").and_then(|v| v.as_object()) {
+        let grouped = catalog::grouped_agents(entries);
+        for section in [
+            catalog::AgentSection::AiCodingAgents,
+            catalog::AgentSection::AiAssistants,
+            catalog::AgentSection::CodeReview,
+            catalog::AgentSection::Other,
+        ] {
+            if let Some(entries) = grouped.get(&section) {
+                println!("{}:", section.label());
+                for (name, value) in entries {
+                    let desc = value
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("");
+                    if let Some(ref filt) = filter_lower {
+                        if !name.to_lowercase().contains(filt) && !desc.to_lowercase().contains(filt) {
+                            continue;
+                        }
                     }
+                    println!("  {:<20} {}", name, desc);
                 }
-                println!("  {:<20} {}", name, desc);
+                println!();
             }
-            println!();
         }
+    }
+
+    if let Some(entries) = catalog.get("tools").and_then(|v| v.as_object()) {
+        println!("Tools (from nixpkgs):");
+        let mut names: Vec<&String> = entries.keys().collect();
+        names.sort();
+        for name in names {
+            let desc = entries[name]
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or("");
+            if let Some(ref filt) = filter_lower {
+                if !name.to_lowercase().contains(filt) && !desc.to_lowercase().contains(filt) {
+                    continue;
+                }
+            }
+            println!("  {:<20} {}", name, desc);
+        }
+        println!();
     }
 }
 
@@ -632,4 +658,3 @@ fn cmd_status(session_id: &str, json: bool) {
         println!("╰{}╯", "─".repeat(w));
     }
 }
-
