@@ -279,8 +279,23 @@ jobs:
           echo "SESSION_ID=$session_id" >> "$GITHUB_ENV"
 
       - name: Execute command in sandbox via Docker sidecar
+        shell: bash
         run: |
-          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox exec "$SESSION_ID" -- echo "Hello from macOS sandbox"
+          set -euo pipefail
+          if ! NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox exec "$SESSION_ID" -- echo "Hello from macOS sandbox"; then
+            echo "::group::docker diagnostics"
+            docker ps -a || true
+            docker inspect nixosandbox-sidecar || true
+            echo "::endgroup::"
+
+            if docker ps -a --format '{{.Names}}' | grep -qx nixosandbox-sidecar; then
+              echo "::group::sidecar diagnostics"
+              docker exec nixosandbox-sidecar sh -lc 'id; uname -a; cat /proc/self/status | grep "^Cap"; bwrap --version' || true
+              docker exec nixosandbox-sidecar sh -lc 'bwrap --dev /dev --proc /proc --ro-bind / / -- true' || true
+              echo "::endgroup::"
+            fi
+            exit 1
+          fi
 
       - name: Verify session status
         run: |
