@@ -1,7 +1,7 @@
 # nix/mkSandboxRootfs.nix
 #
 # Builds a minimal rootfs directory tree from a list of Nix packages.
-# The output is suitable for bwrap --pivot-root.
+# The output is suitable for bwrap --ro-bind <rootfs> /.
 #
 # Usage: mkSandboxRootfs { name = "my-env"; packages = [ pkgs.nodejs pkgs.git ]; }
 { pkgs }:
@@ -20,7 +20,7 @@ in
 pkgs.runCommand "sandbox-${name}" {
   passthru = { inherit name env; };
 } ''
-  mkdir -p $out/{bin,lib,lib64,etc,usr/bin,tmp,dev,proc,workspace,home/sandbox,cache}
+  mkdir -p $out/{bin,lib,lib64,etc,usr/bin,tmp,dev,proc,workspace,home/sandbox,cache,nix/store}
 
   # Symlink all binaries from the merged environment
   if [ -d "${mergedEnv}/bin" ]; then
