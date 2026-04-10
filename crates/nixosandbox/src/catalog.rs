@@ -7,7 +7,6 @@ pub enum AgentSection {
     AiCodingAgents,
     AiAssistants,
     CodeReview,
-    Other,
 }
 
 impl AgentSection {
@@ -16,22 +15,15 @@ impl AgentSection {
             AgentSection::AiCodingAgents => "AI Coding Agents",
             AgentSection::AiAssistants => "AI Assistants",
             AgentSection::CodeReview => "Code Review",
-            AgentSection::Other => "Other Agents",
         }
     }
 }
 
 pub fn classify_agent(name: &str) -> AgentSection {
-    let lower = name.to_ascii_lowercase();
-
-    if lower.contains("review") {
-        AgentSection::CodeReview
-    } else if matches!(lower.as_str(), "claude-code" | "codex" | "opencode" | "aider") {
-        AgentSection::AiCodingAgents
-    } else if matches!(lower.as_str(), "pi" | "gemini" | "assistant") {
-        AgentSection::AiAssistants
-    } else {
-        AgentSection::Other
+    match name {
+        "localgpt" | "hermes-agent" | "openclaw" => AgentSection::AiAssistants,
+        "coderabbit-cli" | "tuicr" => AgentSection::CodeReview,
+        _ => AgentSection::AiCodingAgents,
     }
 }
 
@@ -75,9 +67,8 @@ mod tests {
     fn groups_known_agents_into_expected_sections() {
         let agents = agent_map(&[
             ("claude-code", "Claude Code"),
-            ("pi", "Pi assistant"),
-            ("codex", "Codex"),
-            ("review", "Review helper"),
+            ("localgpt", "Local GPT"),
+            ("coderabbit-cli", "CodeRabbit CLI"),
         ]);
 
         let grouped = grouped_agents(&agents);
@@ -85,19 +76,19 @@ mod tests {
         let coding = grouped.get(&AgentSection::AiCodingAgents).unwrap();
         assert_eq!(
             coding.keys().cloned().collect::<Vec<_>>(),
-            vec!["claude-code".to_string(), "codex".to_string()]
+            vec!["claude-code".to_string()]
         );
 
         let assistants = grouped.get(&AgentSection::AiAssistants).unwrap();
         assert_eq!(
             assistants.keys().cloned().collect::<Vec<_>>(),
-            vec!["pi".to_string()]
+            vec!["localgpt".to_string()]
         );
 
         let review = grouped.get(&AgentSection::CodeReview).unwrap();
         assert_eq!(
             review.keys().cloned().collect::<Vec<_>>(),
-            vec!["review".to_string()]
+            vec!["coderabbit-cli".to_string()]
         );
     }
 
@@ -106,7 +97,7 @@ mod tests {
         let catalog = json!({
             "agents": {
                 "claude-code": { "description": "Claude Code" },
-                "pi": { "description": "Pi assistant" }
+                "localgpt": { "description": "Local GPT" }
             },
             "tools": {
                 "git": { "description": "Git" }

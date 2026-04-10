@@ -542,7 +542,6 @@ fn cmd_catalog(json: bool, filter: Option<String>) {
             catalog::AgentSection::AiCodingAgents,
             catalog::AgentSection::AiAssistants,
             catalog::AgentSection::CodeReview,
-            catalog::AgentSection::Other,
         ] {
             if let Some(entries) = grouped.get(&section) {
                 println!("{}:", section.label());
