@@ -41,7 +41,7 @@ nixo --help
 nixosandbox --help  # compatibility alias
 ```
 
-[packaging/homebrew/nixo.rb](packaging/homebrew/nixo.rb) is a tap bootstrap template, not a ready-to-publish formula. It is written for `nixo` as the primary executable and installs `nixosandbox` as a compatibility symlink. Replace the release URLs and placeholder sha256 values before publishing your tap.
+[packaging/homebrew/nixo.rb](packaging/homebrew/nixo.rb) is a tap bootstrap template, not a ready-to-publish formula. It is written for `nixo` as the primary executable and installs `nixosandbox` as a compatibility symlink. The packaged release ships `bin/` plus `flake/` assets, so the installed command does not require a checkout of this repository. You still need a working Nix runtime on the host because the CLI shells out to `nix` at runtime. Replace the release URLs and placeholder sha256 values before publishing your tap.
 
 ### From source (requires Nix with flakes)
 

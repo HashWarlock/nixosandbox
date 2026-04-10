@@ -24,7 +24,11 @@ class Nixo < Formula
   end
 
   def install
-    bin.install "nixo"
+    libexec.install Dir["bin/*"]
+    pkgshare.install Dir["flake"]
+
+    flake_root = pkgshare/"flake"
+    bin.write_env_script libexec/"nixo", "NIXOSANDBOX_FLAKE_ROOT" => flake_root
     bin.install_symlink "nixo" => "nixosandbox"
   end
 

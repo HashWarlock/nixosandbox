@@ -148,11 +148,15 @@ pub fn grouped_catalog_text(catalog: &Value, filter: Option<&str>) -> String {
             AgentSection::CodeReview,
         ] {
             if let Some(entries) = grouped.get(&section) {
+                let filtered: Vec<_> = entries
+                    .iter()
+                    .filter(|(name, value)| matches_filter(name, value, filter_lower.as_deref()))
+                    .collect();
+                if filtered.is_empty() {
+                    continue;
+                }
                 lines.push(format!("{}:", section.label()));
-                for (name, value) in entries {
-                    if !matches_filter(name, value, filter_lower.as_deref()) {
-                        continue;
-                    }
+                for (name, value) in filtered {
                     let desc = value
                         .get("description")
                         .and_then(|d| d.as_str())
@@ -165,15 +169,21 @@ pub fn grouped_catalog_text(catalog: &Value, filter: Option<&str>) -> String {
     }
 
     if let Some(entries) = catalog.get("tools").and_then(|v| v.as_object()) {
-        lines.push("Tools (from nixpkgs):".to_string());
-        for (name, value) in filtered_entries(entries, filter_lower.as_deref()) {
+        let filtered = filtered_entries(entries, filter_lower.as_deref());
+        let has_tools = !filtered.is_empty();
+        if has_tools {
+            lines.push("Tools (from nixpkgs):".to_string());
+        }
+        for (name, value) in filtered {
             let desc = value
                 .get("description")
                 .and_then(|d| d.as_str())
                 .unwrap_or("");
             lines.push(format!("  {:<20} {}", name, desc));
         }
-        lines.push(String::new());
+        if has_tools {
+            lines.push(String::new());
+        }
     }
 
     while matches!(lines.last(), Some(line) if line.is_empty()) {
@@ -304,5 +314,45 @@ mod tests {
                 .contains_key("git"),
             true
         );
+    }
+
+    #[test]
+    fn grouped_text_omits_empty_agent_headers_when_filter_matches_tools_only() {
+        let catalog = json!({
+            "agents": {
+                "claude-code": { "description": "Claude Code" },
+                "localgpt": { "description": "Local GPT" }
+            },
+            "tools": {
+                "git": { "description": "Git" }
+            }
+        });
+
+        let output = grouped_catalog_text(&catalog, Some("git"));
+
+        assert_eq!(output, "Tools (from nixpkgs):\n  git                  Git");
+        assert!(!output.contains("AI Coding Agents:"));
+        assert!(!output.contains("AI Assistants:"));
+        assert!(!output.contains("Code Review:"));
+    }
+
+    #[test]
+    fn grouped_text_omits_empty_tools_header_when_filter_matches_agents_only() {
+        let catalog = json!({
+            "agents": {
+                "claude-code": { "description": "Claude Code" },
+                "localgpt": { "description": "Local GPT" }
+            },
+            "tools": {
+                "git": { "description": "Git" }
+            }
+        });
+
+        let output = grouped_catalog_text(&catalog, Some("claude"));
+
+        assert_eq!(output, "AI Coding Agents:\n  claude-code          Claude Code");
+        assert!(!output.contains("AI Assistants:"));
+        assert!(!output.contains("Code Review:"));
+        assert!(!output.contains("Tools (from nixpkgs):"));
     }
 }

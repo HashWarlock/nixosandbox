@@ -44,10 +44,13 @@ jobs:
           set -euo pipefail
           target="${{ matrix.target }}"
           package_dir="dist/nixo-${target}"
-          mkdir -p "$package_dir"
-          install -m 755 "crates/nixosandbox/target/${target}/release/nixo" "$package_dir/nixo"
-          install -m 755 "crates/nixosandbox/target/${target}/release/nixosandbox" "$package_dir/nixosandbox"
-          tar -C "$package_dir" -czf "dist/nixo-${target}.tar.gz" nixo nixosandbox
+          mkdir -p "$package_dir/bin" "$package_dir/flake"
+          install -m 755 "crates/nixosandbox/target/${target}/release/nixo" "$package_dir/bin/nixo"
+          install -m 755 "crates/nixosandbox/target/${target}/release/nixosandbox" "$package_dir/bin/nixosandbox"
+          install -m 644 flake.nix "$package_dir/flake/flake.nix"
+          install -m 644 flake.lock "$package_dir/flake/flake.lock"
+          cp -R nix "$package_dir/flake/"
+          tar -C "$package_dir" -czf "dist/nixo-${target}.tar.gz" bin flake
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
             shasum -a 256 "dist/nixo-${target}.tar.gz" > "dist/nixo-${target}.tar.gz.sha256"
           else
