@@ -20,6 +20,8 @@ pub fn build_rootfs(
     argv.push("--new-session".to_string());
     // Mount the Nix rootfs as the new / (bwrap internally does pivot_root)
     argv.extend(["--ro-bind".to_string(), rootfs_path.to_string(), "/".to_string()]);
+    // Mount Nix store read-only — rootfs symlinks point back into /nix/store
+    argv.extend(["--ro-bind".to_string(), "/nix/store".to_string(), "/nix/store".to_string()]);
     argv.extend(["--bind".to_string(), session_dirs.workspace.clone(), "/workspace".to_string()]);
     argv.extend(["--bind".to_string(), session_dirs.home.clone(), "/home/sandbox".to_string()]);
     argv.extend(["--bind".to_string(), session_dirs.cache.clone(), "/cache".to_string()]);
