@@ -15,7 +15,7 @@
 ## `Could not find flake.nix`
 
 - Set flake root explicitly:
-  - `export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixosandbox`
+  - `export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixo`
 - Verify the path:
   - `test -f "$NIXOSANDBOX_FLAKE_ROOT/flake.nix" && echo ok`
 - Retry:

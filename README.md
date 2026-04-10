@@ -1,4 +1,4 @@
-# nixosandbox
+# nixo
 
 Reproducible, isolated sandbox environments for AI coding agents. Compose sandboxes from 88+ agents and 24+ tools using Nix, run them in Bubblewrap containers with configurable network and filesystem policies.
 Primary CLI: `nixo`. The legacy `nixosandbox` binary remains available as a compatibility alias.
@@ -36,7 +36,8 @@ nixo CLI (Rust)
 ### Homebrew tap template
 
 ```bash
-brew install <your-tap>/nixo
+brew tap HashWarlock/homebrew-nixo
+brew install nixo
 nixo --help
 nixosandbox --help  # compatibility alias
 ```
@@ -53,7 +54,7 @@ brew test nixo
 ### From source (requires Nix with flakes)
 
 ```bash
-nix build github:HashWarlock/nixosandbox
+nix build github:HashWarlock/nixo
 ./result/bin/nixo --help
 ./result/bin/nixosandbox --help
 ```
@@ -369,7 +370,7 @@ pi -e .pi/extensions/sandbox.ts
 Set `NIXOSANDBOX_FLAKE_ROOT` to the repo root if the binary can't find `flake.nix` automatically:
 
 ```bash
-export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixosandbox
+export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixo
 ```
 
 ## Testing

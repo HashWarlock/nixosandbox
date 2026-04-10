@@ -85,7 +85,7 @@ NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixo destroy <session-id>
 ### TypeScript extension (packages/pi-sandbox-extension)
 
 Provides Pi coding agent integration. Key files:
-- `cli-client.ts` — spawns the nixosandbox CLI as a subprocess, provides `createSession()`, `execCommand()`, `catalogPackages()`
+- `cli-client.ts` — spawns the `nixo` CLI as a subprocess (`nixosandbox` remains a compatibility alias), provides `createSession()`, `execCommand()`, `catalogPackages()`
 - `extension.ts` — registers Pi tools: `sandboxRun`, `sandboxReadFile`, `sandboxWriteFile`, `sandboxListFiles`, `sandboxSessionInfo`, `sandboxBrowser`, `sandboxCatalog`
 - `contract.ts` — TypeScript type definitions for the NDJSON protocol
 
