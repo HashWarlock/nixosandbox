@@ -98,6 +98,13 @@ jobs:
           NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json | python3 -m json.tool > /dev/null
           echo "Catalog JSON is valid"
 
+      - name: Verify catalog agent count and new packages
+        run: |
+          agent_count=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d['agents']))")
+          echo "Catalog agent count: $agent_count"
+          [ "$agent_count" -gt 25 ] || { echo "ERROR: expected >25 agents, got $agent_count"; exit 1; }
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json | python3 -c "import sys, json; d = json.load(sys.stdin); [name for name in ['openclaw', 'hermes-agent', 'jules'] if name not in d['agents']] and exit(1); print(f'All expected agents present in {len(d[\"agents\"])} total')"
+
       - name: Test catalog filter
         run: |
           output=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --filter claude)
@@ -148,6 +155,12 @@ jobs:
           - agent: pi
             binary: pi
             check: "--help"
+          - agent: openclaw
+            binary: openclaw
+            check: "--help"
+          - agent: hermes-agent
+            binary: hermes
+            check: "--version"
     steps:
       - uses: actions/checkout@v6
 
