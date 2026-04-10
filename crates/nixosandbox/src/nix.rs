@@ -133,7 +133,7 @@ pub fn query_catalog() -> Result<String, String> {
     // Evaluate a Nix expression that extracts names and meta.description
     // from both catalog.agents and catalog.tools.
     let expr = format!(
-        r#"let flake = builtins.getFlake "{}"; catalog = flake.catalog; extractMeta = attrs: builtins.mapAttrs (name: pkg: {{ description = pkg.meta.description or ""; }}) attrs; in {{ agents = extractMeta catalog.agents; tools = extractMeta catalog.tools; }}"#,
+        r#"let flake = builtins.getFlake "{}"; catalog = flake.catalog; filterDrvs = attrs: builtins.listToAttrs (builtins.filter (e: (e.value.type or "") == "derivation") (map (k: {{ name = k; value = attrs.${{k}}; }}) (builtins.attrNames attrs))); extractMeta = attrs: builtins.mapAttrs (name: pkg: {{ description = pkg.meta.description or ""; }}) (filterDrvs attrs); in {{ agents = extractMeta catalog.agents; tools = extractMeta catalog.tools; }}"#,
         flake_root
     );
 

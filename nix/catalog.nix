@@ -8,7 +8,15 @@
 {
   # All packages from numtide/llm-agents.nix.
   # 'default' is a meta-alias present in every flake packages output; strip it.
-  agents = builtins.removeAttrs llm-agents-pkgs [ "default" ];
+  # If llm-agents-pkgs is empty (e.g. flake input missing x86_64-linux support),
+  # emit a trace warning rather than silently returning an empty catalog.
+  agents =
+    let filtered = builtins.removeAttrs llm-agents-pkgs [ "default" ];
+    in if filtered == {}
+       then builtins.trace
+              "nixosandbox WARNING: llm-agents-pkgs is empty — catalog will have no agents. Check that the llm-agents.nix flake input exposes x86_64-linux packages."
+              {}
+       else filtered;
 
   tools = {
     # Languages & runtimes
