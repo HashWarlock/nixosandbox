@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "nixosandbox",
+    name = "nixo",
     about = "Reproducible, isolated sandbox environments"
 )]
 pub struct Cli {

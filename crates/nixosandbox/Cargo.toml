@@ -2,6 +2,11 @@
 name = "nixosandbox"
 version = "0.1.0"
 edition = "2021"
+default-run = "nixo"
+
+[[bin]]
+name = "nixo"
+path = "src/main.rs"
 
 [[bin]]
 name = "nixosandbox"
