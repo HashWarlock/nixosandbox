@@ -123,15 +123,26 @@ jobs:
           echo "$output"
           echo "$output" | grep -q "claude-code"
 
-      - name: Test --with rootfs creation
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          if ! bwrap --ro-bind / / --dev /dev --proc /proc -- echo "bwrap works"; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Linux end-to-end (create → exec → destroy)
         run: |
           output=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox create \
-            --with bash,coreutils --network off --name ci-smoke --json)
+            --with bash,coreutils --network off --name ci-linux-e2e --json)
           echo "$output"
           session_id=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['sessionId'])")
-          echo "Session created: $session_id"
+          echo "Session: $session_id"
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox exec "$session_id" -- echo "Hello from Linux sandbox"
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox status "$session_id" --json | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); assert d['isolation']=='native', f'expected native, got {d[\"isolation\"]}'; print('Isolation: native ✓')"
           NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy "$session_id"
-          echo "Session destroyed"
+          echo "Full Linux E2E passed"
 
       - name: Test mutual exclusivity
         run: |
@@ -226,3 +237,53 @@ jobs:
           if [ -n "$SESSION_ID" ]; then
             NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy "$SESSION_ID" 2>/dev/null || true
           fi
+
+  macos-e2e:
+    name: macOS end-to-end (Docker builder)
+    runs-on: macos-latest
+    needs: [rust-tests]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            extra-substituters = https://cache.numtide.com
+            extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=
+
+      - name: Install Docker
+        uses: docker/setup-docker-action@v4
+
+      - name: Build nixosandbox CLI (native macOS)
+        run: nix build --accept-flake-config .#nixosandbox
+
+      - name: Test catalog (nix eval — no Docker needed)
+        run: |
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(f'{len(d[\"agents\"])} agents, {len(d[\"tools\"])} tools')"
+
+      - name: Create sandbox via Docker builder
+        run: |
+          output=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox create \
+            --with bash,coreutils --network off --name ci-macos-e2e --json)
+          echo "$output"
+          session_id=$(echo "$output" | python3 -c "import sys,json; print(json.load(sys.stdin)['sessionId'])")
+          echo "SESSION_ID=$session_id" >> "$GITHUB_ENV"
+
+      - name: Execute command in sandbox via Docker sidecar
+        run: |
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox exec "$SESSION_ID" -- echo "Hello from macOS sandbox"
+
+      - name: Verify session status
+        run: |
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox status "$SESSION_ID" --json | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); assert d['isolation']=='docker', f'expected docker, got {d[\"isolation\"]}'; print('Isolation: docker ✓')"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          if [ -n "$SESSION_ID" ]; then
+            NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy "$SESSION_ID" 2>/dev/null || true
+          fi
+          docker rm -f nixosandbox-sidecar 2>/dev/null || true

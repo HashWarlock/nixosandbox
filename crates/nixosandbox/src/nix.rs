@@ -28,7 +28,13 @@ pub fn find_flake_root() -> Result<String, String> {
 /// Build a rootfs for a built-in profile. Returns the Nix store path.
 pub fn build_profile(profile_name: &str) -> Result<String, String> {
     let flake_root = find_flake_root()?;
-    nix_build(&format!("{}#sandbox-{}", flake_root, profile_name))
+    let flake_attr = format!("{}#sandbox-{}", flake_root, profile_name);
+
+    if cfg!(not(target_os = "linux")) {
+        return crate::docker::nix_build_in_docker(&flake_attr, &flake_root);
+    }
+
+    nix_build(&flake_attr)
 }
 
 /// Build a rootfs from a custom spec. Returns the Nix store path.
@@ -40,12 +46,17 @@ pub fn build_spec(spec: &SandboxSpec) -> Result<String, String> {
         r#"let pkgs = import (builtins.getFlake "{}").inputs.nixpkgs {{}}; mkSandboxRootfs = import {}/nix/mkSandboxRootfs.nix {{ inherit pkgs; }}; in mkSandboxRootfs {{ name = "{}"; packages = [ {} ]; env = {{ {} }}; }}"#,
         flake_root, flake_root, spec.name, packages_nix, env_nix
     );
+
+    if cfg!(not(target_os = "linux")) {
+        return crate::docker::nix_build_expr_in_docker(&expr, &flake_root);
+    }
+
     nix_build_expr(&expr)
 }
 
 fn nix_build(flake_attr: &str) -> Result<String, String> {
     let output = Command::new("nix")
-        .args(["build", flake_attr, "--no-link", "--print-out-paths"])
+        .args(["build", flake_attr, "--no-link", "--print-out-paths", "--accept-flake-config"])
         .stdout(Stdio::piped()).stderr(Stdio::piped())
         .output().map_err(|e| format!("nix build: {e}"))?;
     if output.status.success() {
@@ -58,7 +69,7 @@ fn nix_build(flake_attr: &str) -> Result<String, String> {
 
 fn nix_build_expr(expr: &str) -> Result<String, String> {
     let output = Command::new("nix")
-        .args(["build", "--impure", "--expr", expr, "--no-link", "--print-out-paths"])
+        .args(["build", "--impure", "--expr", expr, "--no-link", "--print-out-paths", "--accept-flake-config"])
         .stdout(Stdio::piped()).stderr(Stdio::piped())
         .output().map_err(|e| format!("nix build --expr: {e}"))?;
     if output.status.success() {
@@ -70,7 +81,19 @@ fn nix_build_expr(expr: &str) -> Result<String, String> {
 }
 
 /// Check if a rootfs path looks valid.
+///
+/// On non-Linux platforms, the rootfs lives inside a Docker volume (not the host
+/// filesystem), so we only validate the path format rather than checking existence.
 pub fn validate_rootfs(rootfs_path: &str) -> Result<(), String> {
+    if cfg!(not(target_os = "linux")) {
+        // On macOS, rootfs is in the Docker volume — can't stat from the host.
+        // Validate that it looks like a Nix store path.
+        if !rootfs_path.starts_with("/nix/store/") {
+            return Err(format!("rootfs path doesn't look like a Nix store path: {rootfs_path}"));
+        }
+        return Ok(());
+    }
+
     let root = Path::new(rootfs_path);
     if !root.exists() { return Err(format!("rootfs not found: {rootfs_path}")); }
     if !root.join("bin").exists() { return Err(format!("rootfs missing /bin: {rootfs_path}")); }
@@ -123,6 +146,11 @@ pub fn build_with_catalog(names: &[String], _network: &str) -> Result<String, St
         r#"let flake = builtins.getFlake "{}"; in flake.lib.mkAgentSandbox {{ name = "custom-{}"; packages = [ {} ]; }}"#,
         flake_root, name_hash, packages_nix
     );
+
+    if cfg!(not(target_os = "linux")) {
+        return crate::docker::nix_build_expr_in_docker(&expr, &flake_root);
+    }
+
     nix_build_expr(&expr)
 }
 

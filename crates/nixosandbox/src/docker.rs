@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::process::{Command, Stdio};
 
 const SIDECAR_NAME: &str = "nixosandbox-sidecar";
@@ -6,6 +7,11 @@ const IMAGE_NAME: &str = "nixosandbox-sidecar:latest";
 /// Note: this is the data dir mount point, not the sessions subdir.
 /// Sessions live at `<CONTAINER_DATA_MOUNT>/sessions/<id>/...` inside the container.
 const CONTAINER_DATA_MOUNT: &str = "/nixosandbox/sessions";
+
+const BUILDER_IMAGE_NAME: &str = "nixosandbox-builder:latest";
+/// Persistent Docker volume storing the Nix store for macOS builds.
+/// Shared between the builder (writes) and the sidecar (reads).
+const NIX_VOLUME_NAME: &str = "nixosandbox-nix";
 
 /// Information about a running Docker sidecar container.
 pub struct DockerSidecar {
@@ -103,10 +109,16 @@ fn ensure_image() -> Result<(), String> {
     }
 
     eprintln!("nixosandbox: building Docker sidecar image (one-time setup)...");
+    let flake_root = crate::nix::find_flake_root()
+        .unwrap_or_else(|_| ".".to_string());
+    let dockerfile = format!("{}/docker/nixosandbox-sidecar.Dockerfile", flake_root);
     let output = Command::new("docker")
         .args([
-            "build", "-t", IMAGE_NAME,
-            "-f", "docker/nixosandbox-sidecar.Dockerfile", ".",
+            "build",
+            "--platform", "linux/amd64",
+            "-t", IMAGE_NAME,
+            "-f", &dockerfile,
+            &flake_root,
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -122,17 +134,22 @@ fn ensure_image() -> Result<(), String> {
 }
 
 /// Create and start a new sidecar container.
+///
+/// Mounts the shared `nixosandbox-nix` Docker volume at `/nix` so bwrap can
+/// access rootfs derivations built by the Docker-based builder.
 fn create_sidecar(host_sessions_dir: &str) -> Result<String, String> {
     let sessions_volume = format!("{host_sessions_dir}:{CONTAINER_DATA_MOUNT}");
+    let nix_volume = format!("{NIX_VOLUME_NAME}:/nix:ro");
     let output = Command::new("docker")
         .args([
             "run", "-d",
+            "--platform", "linux/amd64",
             "--name", SIDECAR_NAME,
             "--cap-add", "SYS_ADMIN",
             "--cap-add", "NET_ADMIN",
             "--security-opt", "seccomp=unconfined",
             "-v", &sessions_volume,
-            "-v", "/nix/store:/nix/store:ro",
+            "-v", &nix_volume,
             IMAGE_NAME,
             "sleep", "infinity",
         ])
@@ -202,6 +219,157 @@ pub fn rewrite_path(path: &str, host_prefix: &str, container_prefix: &str) -> St
         path.replacen(host_prefix, container_prefix, 1)
     } else {
         path.to_string()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Docker-based Nix builder (macOS)
+// ---------------------------------------------------------------------------
+
+/// Build the builder Docker image if it doesn't already exist.
+/// Uses an inline Dockerfile piped via stdin to avoid path-resolution issues.
+fn ensure_builder_image() -> Result<(), String> {
+    let output = Command::new("docker")
+        .args(["images", BUILDER_IMAGE_NAME, "--format", "{{.ID}}"])
+        .output()
+        .map_err(|e| format!("docker images check failed: {e}"))?;
+
+    let id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !id.is_empty() {
+        return Ok(());
+    }
+
+    eprintln!("nixosandbox: building Docker builder image (one-time setup)...");
+
+    // Inline Dockerfile — avoids needing to locate the file on disk.
+    let dockerfile = concat!(
+        "FROM nixos/nix:latest\n",
+        "RUN echo 'experimental-features = nix-command flakes' >> /etc/nix/nix.conf \\\n",
+        " && echo 'extra-substituters = https://cache.numtide.com' >> /etc/nix/nix.conf \\\n",
+        " && echo 'extra-trusted-public-keys = niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g=' >> /etc/nix/nix.conf \\\n",
+        " && echo 'filter-syscalls = false' >> /etc/nix/nix.conf\n",
+    );
+
+    let mut child = Command::new("docker")
+        .args([
+            "build",
+            "--platform", "linux/amd64",
+            "-t", BUILDER_IMAGE_NAME,
+            "-f", "-",   // read Dockerfile from stdin
+            "/tmp",       // build context (unused — Dockerfile has no COPY)
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("docker build (builder): {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(dockerfile.as_bytes())
+            .map_err(|e| format!("writing builder Dockerfile to stdin: {e}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("docker build (builder) wait: {e}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("docker build (builder) failed: {}", stderr.trim()))
+    }
+}
+
+/// Run `nix build <flake-attr>` inside a Docker container.
+///
+/// The builder uses a persistent Docker volume (`nixosandbox-nix`) for `/nix`,
+/// so subsequent builds are incremental. The flake root is bind-mounted read-only.
+pub fn nix_build_in_docker(flake_attr: &str, flake_root: &str) -> Result<String, String> {
+    if !is_docker_available() {
+        return Err(
+            "Docker not available. On macOS, Docker Desktop is required to build Linux sandboxes.\n\
+             Install Docker Desktop from https://www.docker.com/products/docker-desktop/".to_string()
+        );
+    }
+
+    ensure_builder_image()?;
+
+    let flake_mount = format!("{}:{}:ro", flake_root, flake_root);
+    let nix_volume = format!("{}:/nix", NIX_VOLUME_NAME);
+
+    let output = Command::new("docker")
+        .args([
+            "run", "--rm",
+            "--platform", "linux/amd64",
+            "-v", &flake_mount,
+            "-v", &nix_volume,
+            BUILDER_IMAGE_NAME,
+            "nix", "build", flake_attr,
+            "--no-link", "--print-out-paths",
+            "--accept-flake-config",
+            "--extra-experimental-features", "nix-command flakes",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("docker run (nix build): {e}"))?;
+
+    if output.status.success() {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if path.is_empty() {
+            Err("nix build in Docker produced no output".into())
+        } else {
+            Ok(path)
+        }
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        Err(format!("nix build in Docker failed: {}", stderr))
+    }
+}
+
+/// Run `nix build --impure --expr <expr>` inside a Docker container.
+pub fn nix_build_expr_in_docker(expr: &str, flake_root: &str) -> Result<String, String> {
+    if !is_docker_available() {
+        return Err(
+            "Docker not available. On macOS, Docker Desktop is required to build Linux sandboxes.\n\
+             Install Docker Desktop from https://www.docker.com/products/docker-desktop/".to_string()
+        );
+    }
+
+    ensure_builder_image()?;
+
+    let flake_mount = format!("{}:{}:ro", flake_root, flake_root);
+    let nix_volume = format!("{}:/nix", NIX_VOLUME_NAME);
+
+    let output = Command::new("docker")
+        .args([
+            "run", "--rm",
+            "--platform", "linux/amd64",
+            "-v", &flake_mount,
+            "-v", &nix_volume,
+            BUILDER_IMAGE_NAME,
+            "nix", "build", "--impure", "--expr", expr,
+            "--no-link", "--print-out-paths",
+            "--accept-flake-config",
+            "--extra-experimental-features", "nix-command flakes",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("docker run (nix build --expr): {e}"))?;
+
+    if output.status.success() {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if path.is_empty() {
+            Err("nix build --expr in Docker produced no output".into())
+        } else {
+            Ok(path)
+        }
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        Err(format!("nix build --expr in Docker failed: {}", stderr))
     }
 }
 
