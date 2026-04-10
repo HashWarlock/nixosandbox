@@ -1,6 +1,6 @@
 # nixosandbox
 
-Reproducible, isolated sandbox environments for AI coding agents. Compose sandboxes from 25+ agents and 24+ tools using Nix, run them in Bubblewrap containers with configurable network and filesystem policies.
+Reproducible, isolated sandbox environments for AI coding agents. Compose sandboxes from 88+ agents and 24+ tools using Nix, run them in Bubblewrap containers with configurable network and filesystem policies.
 
 ## What it does
 
@@ -24,7 +24,7 @@ nixosandbox CLI (Rust)
   ├── Nix: builds rootfs from catalog packages
   ├── Bubblewrap: creates isolated mount/pid/net namespaces
   ├── Session manager: tracks sandbox lifecycle
-  └── Catalog: 25+ AI agents (llm-agents.nix) + 24+ dev tools (nixpkgs)
+  └── Catalog: 88+ AI agents (llm-agents.nix) + 24+ dev tools (nixpkgs)
 ```
 
 **On Linux:** uses bubblewrap directly (setuid or user namespaces).
@@ -130,7 +130,7 @@ nixosandbox destroy <session-id>    # clean up
 
 The catalog merges two sources:
 
-**AI agents** from [numtide/llm-agents.nix](https://github.com/numtide/llm-agents.nix):
+**AI agents** from [numtide/llm-agents.nix](https://github.com/numtide/llm-agents.nix) — all 88+ packages exposed dynamically, automatically updated when the flake input is bumped:
 
 | Agent | Description |
 |-------|-------------|
@@ -139,14 +139,17 @@ The catalog merges two sources:
 | `codex` | OpenAI's coding agent |
 | `copilot-cli` | GitHub Copilot CLI |
 | `cursor-agent` | Cursor's headless agent |
-| `droid` | Android development agent |
+| `droid` | Factory AI's development agent |
 | `forge` | Code forging agent |
 | `gemini-cli` | Google Gemini CLI |
 | `goose-cli` | Block's coding agent |
+| `hermes-agent` | Nous Research self-improving agent |
+| `jules` | Google's async coding agent |
+| `openclaw` | OpenClaw AI assistant |
 | `opencode` | Open-source coding agent |
-| `pi` | Anthropic's Pi agent |
+| `pi` | Pi coding agent |
 | `qwen-code` | Alibaba's coding agent |
-| ... | 25+ agents total |
+| ... | 88+ agents total — run `nixosandbox catalog` to see all |
 
 **Development tools** from nixpkgs:
 
@@ -348,7 +351,7 @@ nix flake check
 cd packages/pi-sandbox-extension && npx tsc --noEmit
 ```
 
-CI runs agent smoke tests that create sandboxes with each agent (claude-code, codex, opencode, amp, droid, pi) and verify the binary launches inside bwrap.
+CI runs agent smoke tests that create sandboxes with each agent (claude-code, codex, opencode, amp, droid, pi, openclaw, hermes-agent, jules) and verify the binary launches inside bwrap.
 
 ## License
 

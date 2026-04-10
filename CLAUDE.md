@@ -65,7 +65,7 @@ NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy <session-id>
 | `cli.rs` | clap argument parsing |
 | `main.rs` | command dispatch, `cmd_create`, `cmd_exec`, `cmd_catalog`, etc. |
 | `session.rs` | session CRUD, metadata serialization, directory layout |
-| `nix.rs` | `find_flake_root()`, `build_profile()`, `build_with_catalog()`, `query_catalog()` |
+| `nix.rs` | `find_flake_root()`, `build_profile()`, `build_with_catalog()`, `query_catalog()` (filters non-derivation attrs via `filterDrvs` before reading `.meta.description`) |
 | `plan_builder.rs` | bwrap argv construction (`--ro-bind`, `--bind`, `--unshare-*`, `--setenv`) |
 | `bubblewrap.rs` | bwrap detection: `NIXOSANDBOX_BWRAP_PATH` env var, then `which bwrap`, Docker fallback on macOS |
 | `docker.rs` | Docker sidecar lifecycle (find, start, create, image build) |
@@ -75,7 +75,7 @@ NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox destroy <session-id>
 
 | File | Owns |
 |------|------|
-| `nix/catalog.nix` | Unified `{ agents, tools }` attrset merging llm-agents.nix + nixpkgs |
+| `nix/catalog.nix` | Unified `{ agents, tools }` attrset — agents is a full dynamic passthrough of `llm-agents-pkgs` (no whitelist), tools from nixpkgs |
 | `nix/mkSandboxRootfs.nix` | Builds rootfs directory tree from package list (symlinks, /etc, certs) |
 | `nix/mkAgentSandbox.nix` | Resolves catalog names to packages, delegates to mkSandboxRootfs |
 | `nix/profiles/*.json` | Built-in profile specs (strict, build-install, offline-review, debug-network) |
