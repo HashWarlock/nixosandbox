@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-13
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: crates/nixosandbox
+
+      - name: Build release binaries
+        working-directory: crates/nixosandbox
+        run: cargo build --locked --release --target "${{ matrix.target }}" --bin nixo --bin nixosandbox
+
+      - name: Package release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          package_dir="dist/nixo-${target}"
+          mkdir -p "$package_dir/bin" "$package_dir/flake"
+          install -m 755 "crates/nixosandbox/target/${target}/release/nixo" "$package_dir/bin/nixo"
+          install -m 755 "crates/nixosandbox/target/${target}/release/nixosandbox" "$package_dir/bin/nixosandbox"
+          install -m 644 flake.nix "$package_dir/flake/flake.nix"
+          install -m 644 flake.lock "$package_dir/flake/flake.lock"
+          cp -R nix "$package_dir/flake/"
+          tar -C "$package_dir" -czf "dist/nixo-${target}.tar.gz" bin flake
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            shasum -a 256 "dist/nixo-${target}.tar.gz" > "dist/nixo-${target}.tar.gz.sha256"
+          else
+            sha256sum "dist/nixo-${target}.tar.gz" > "dist/nixo-${target}.tar.gz.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nixo-${{ matrix.target }}
+          path: |
+            dist/nixo-${{ matrix.target }}.tar.gz
+            dist/nixo-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nixo-*
+          path: release-assets
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*

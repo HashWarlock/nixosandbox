@@ -1,26 +1,27 @@
-# nixosandbox
+# nixo
 
 Reproducible, isolated sandbox environments for AI coding agents. Compose sandboxes from 88+ agents and 24+ tools using Nix, run them in Bubblewrap containers with configurable network and filesystem policies.
+Primary CLI: `nixo`. The legacy `nixosandbox` binary remains available as a compatibility alias.
 
 ## What it does
 
-nixosandbox creates lightweight Linux sandboxes from a catalog of Nix packages. You pick the agent and tools you need, and it builds an isolated rootfs with just those packages — no Docker images, no VMs, no manual setup.
+nixo creates lightweight Linux sandboxes from a catalog of Nix packages. You pick the agent and tools you need, and it builds an isolated rootfs with just those packages — no Docker images, no VMs, no manual setup.
 
 ```bash
 # Create a sandbox with Claude Code + Git + Python
-nixosandbox create --with claude-code,git,python312 --network off --json
+nixo create --with claude-code,git,python312 --network off --json
 
 # Run a command inside it
-nixosandbox exec <session-id> -- claude --version
+nixo exec <session-id> -- claude --version
 
 # Or drop into an interactive shell
-nixosandbox enter <session-id>
+nixo enter <session-id>
 ```
 
 ## Architecture
 
 ```
-nixosandbox CLI (Rust)
+nixo CLI (Rust)
   ├── Nix: builds rootfs from catalog packages
   ├── Bubblewrap: creates isolated mount/pid/net namespaces
   ├── Session manager: tracks sandbox lifecycle
@@ -32,10 +33,37 @@ nixosandbox CLI (Rust)
 
 ## Install
 
+### Homebrew
+
+```bash
+brew tap HashWarlock/nixo
+brew install nixo
+nixo --help
+nixosandbox --help  # compatibility alias
+```
+
+[`Formula/nixo.rb`](Formula/nixo.rb) is the in-repo Homebrew formula for the `HashWarlock/nixo` tap. It installs `nixo` as the primary executable and `nixosandbox` as a compatibility symlink. The packaged release ships `bin/` plus `flake/` assets, so the installed command does not require a checkout of this repository. You still need a working Nix runtime on the host because the CLI shells out to `nix` at runtime. Replace the placeholder sha256 values before publishing a release.
+
+Before publishing or updating the formula, run:
+
+```bash
+brew audit --strict nixo
+brew test nixo
+```
+
+To publish the first tap-backed release from this repo:
+
+1. Merge the formula and release workflow to `master`.
+2. Create a version tag such as `v0.1.0`.
+3. Wait for the release workflow to upload the tarballs.
+4. Compute the real archive checksums and replace the placeholder `sha256` values in [`Formula/nixo.rb`](Formula/nixo.rb).
+5. Commit that formula update on `master`, then users can install with `brew tap HashWarlock/nixo && brew install nixo`.
+
 ### From source (requires Nix with flakes)
 
 ```bash
-nix build github:HashWarlock/nixosandbox
+nix build github:HashWarlock/nixo
+./result/bin/nixo --help
 ./result/bin/nixosandbox --help
 ```
 
@@ -51,51 +79,60 @@ cargo build
 ### 1. Browse the catalog
 
 ```bash
-nixosandbox catalog
-nixosandbox catalog --filter claude
-nixosandbox catalog --json | jq '.agents | keys'
+nixo catalog
+nixo catalog --filter claude
+nixo catalog --json | jq '.agents | keys'
+nixo catalog --json --grouped | jq '.agentCategories | keys'
 ```
 
 ### 2. Create a sandbox
 
 ```bash
 # From catalog packages (compose what you need)
-nixosandbox create --with claude-code,bash,git --network off --name my-sandbox --json
+nixo create --with claude-code,bash,git --network off --name my-sandbox --json
 
 # From a built-in profile
-nixosandbox create --profile strict --json
+nixo create --profile strict --json
 
 # With a host workspace mounted
-nixosandbox create --with opencode,bash --workspace ~/projects/myapp --json
+nixo create --with opencode,bash --workspace ~/projects/myapp --json
 ```
 
 ### 3. Execute commands
 
 ```bash
 # Run a single command
-nixosandbox exec <session-id> -- echo "Hello from sandbox"
+nixo exec <session-id> -- echo "Hello from sandbox"
 
 # Stream NDJSON events (for programmatic use)
-nixosandbox exec <session-id> --json -- python3 -c "print('hello')"
+nixo exec <session-id> --json -- python3 -c "print('hello')"
 
 # With extra environment variables
-nixosandbox exec <session-id> --env API_KEY=test -- node script.js
+nixo exec <session-id> --env API_KEY=test -- node script.js
 ```
 
 ### 4. Interactive shell
 
 ```bash
-nixosandbox enter <session-id>
+nixo enter <session-id>
 ```
 
 ### 5. Manage sessions
 
 ```bash
-nixosandbox list                    # list all sessions
-nixosandbox list --json             # as JSON
-nixosandbox status <session-id>     # detailed session info
-nixosandbox destroy <session-id>    # clean up
+nixo list                    # list all sessions
+nixo list --json             # as JSON
+nixo status <session-id>     # detailed session info
+nixo destroy <session-id>    # clean up
 ```
+
+## AgentSkills support
+
+This repo ships a reusable AgentSkills-compatible skill at [`.agents/skills/nixo-cli/SKILL.md`](.agents/skills/nixo-cli/SKILL.md).
+
+- Agents should prefer `nixo` in new instructions and treat `nixosandbox` as a compatibility alias.
+- Use the bundled skill when the task involves sandbox lifecycle operations, catalog queries, session-id workflows, or common CLI errors.
+- If your runtime supports the AgentSkills directory convention, copy the `nixo-cli` folder into that runtime's skills directory or install it from this repository using the runtime's skill-import flow.
 
 ## CLI reference
 
@@ -126,6 +163,14 @@ nixosandbox destroy <session-id>    # clean up
 
 `--with`, `--profile`, and `--spec` are mutually exclusive.
 
+### `catalog` flags
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON (flat compatibility by default) |
+| `--grouped` | Group agent catalog JSON by category |
+| `--filter <text>` | Filter package names and descriptions by substring |
+
 ## Catalog
 
 The catalog merges two sources:
@@ -149,11 +194,16 @@ The catalog merges two sources:
 | `opencode` | Open-source coding agent |
 | `pi` | Pi coding agent |
 | `qwen-code` | Alibaba's coding agent |
-| ... | 88+ agents total — run `nixosandbox catalog` to see all |
+| ... | 88+ agents total — run `nixo catalog` to see all |
 
 **Development tools** from nixpkgs:
 
 `python312` `nodejs_22` `rustc` `cargo` `go` `git` `coreutils` `bash` `findutils` `gnugrep` `gnused` `gawk` `gnumake` `gcc` `gnutar` `gzip` `curl` `cacert` `ripgrep` `fd` `jq` `less` `zsh` `nix`
+
+Catalog output supports two JSON views:
+
+- `nixo catalog --json` keeps the current flat compatibility shape with top-level `agents` and `tools`
+- `nixo catalog --json --grouped` returns grouped agent categories under `agentCategories`
 
 ## Built-in profiles
 
@@ -168,7 +218,7 @@ The catalog merges two sources:
 
 ### Rootfs composition
 
-When you run `nixosandbox create --with claude-code,bash`, the CLI:
+When you run `nixo create --with claude-code,bash`, the CLI:
 
 1. Resolves `claude-code` and `bash` from the catalog (agents first, then tools)
 2. Calls `mkAgentSandbox` which delegates to `mkSandboxRootfs`
@@ -179,7 +229,7 @@ The rootfs contains: `/bin`, `/lib`, `/etc` (passwd, hosts, certs), `/usr/bin/en
 
 ### Sandbox execution
 
-When you run `nixosandbox exec <id> -- command`:
+When you run `nixo exec <id> -- command`:
 
 1. Loads session metadata (rootfs path, network mode, profile)
 2. Detects bubblewrap (native Linux or Docker sidecar on macOS)
@@ -224,7 +274,7 @@ Create a JSON spec for full control:
 ```
 
 ```bash
-nixosandbox create --spec my-env.json --json
+nixo create --spec my-env.json --json
 ```
 
 ## Environment variables
@@ -306,8 +356,9 @@ import sandboxExtension from "<path-to-repo>/packages/pi-sandbox-extension/dist/
 
 export default function (pi: any) {
   sandboxExtension(pi, {
-    // Absolute path to the nixosandbox binary (cargo build --release)
-    binaryPath: "<path-to-repo>/crates/nixosandbox/target/release/nixosandbox",
+    // Absolute path to the nixo binary (cargo build --release)
+    // The nixosandbox alias remains available if your setup still expects it.
+    binaryPath: "<path-to-repo>/crates/nixosandbox/target/release/nixo",
   });
 }
 ```
@@ -335,7 +386,7 @@ pi -e .pi/extensions/sandbox.ts
 Set `NIXOSANDBOX_FLAKE_ROOT` to the repo root if the binary can't find `flake.nix` automatically:
 
 ```bash
-export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixosandbox
+export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixo
 ```
 
 ## Testing

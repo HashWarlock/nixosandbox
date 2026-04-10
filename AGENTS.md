@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents when working in this repository.
 
 ## Build and test commands
 
@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 cd crates/nixosandbox
 cargo build                          # build
-cargo test                           # run all 20 tests
+cargo test                           # run all tests
 cargo test session::tests            # run tests in one module
 cargo test metadata_roundtrip        # run a single test by name
 ```

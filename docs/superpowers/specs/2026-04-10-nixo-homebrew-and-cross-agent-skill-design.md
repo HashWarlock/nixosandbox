@@ -156,6 +156,7 @@ The current catalog output is functionally correct but hard to scan as agent cou
     - top-level `tools` map
 - `nixo catalog --json --grouped`:
   - return grouped JSON view for clients that want category structure.
+  - current implementation emits grouped agent data under `agentCategories`, with `tools` preserved as a top-level map.
 
 ### Category model
 
@@ -198,7 +199,7 @@ Implementation note:
 
 ## CLI compatibility tests
 
-- Add tests confirming both executable names function.
+- Add tests confirming both executable names function and invoke the same help text.
 - Ensure output parity for key commands.
 
 ## Catalog UX tests

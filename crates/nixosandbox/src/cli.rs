@@ -1,7 +1,10 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "nixosandbox", about = "Reproducible, isolated sandbox environments")]
+#[command(
+    name = "nixo",
+    about = "Reproducible, isolated sandbox environments"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -120,9 +123,12 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
 
+        /// Group agent output by category
+        #[arg(long)]
+        grouped: bool,
+
         /// Filter by name substring
         #[arg(long)]
         filter: Option<String>,
     },
-
 }

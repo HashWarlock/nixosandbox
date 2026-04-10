@@ -95,6 +95,29 @@ jobs:
           NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json | python3 -m json.tool > /dev/null
           echo "Catalog JSON is valid"
 
+      - name: Test grouped catalog output
+        run: |
+          grouped_json=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json --grouped)
+          echo "$grouped_json" | python3 -m json.tool > /dev/null
+          echo "$grouped_json" | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          missing = [key for key in ["agentCategories", "tools"] if key not in data]
+          if missing:
+              print(f"ERROR: grouped catalog JSON missing keys: {missing}", file=sys.stderr)
+              sys.exit(1)
+          '
+          echo "Grouped catalog JSON is valid"
+
+      - name: Verify CLI alias help parity
+        run: |
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixo --help > "$tmpdir/nixo-help"
+          NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox --help > "$tmpdir/nixosandbox-help"
+          diff -u "$tmpdir/nixo-help" "$tmpdir/nixosandbox-help"
+          echo "nixo and nixosandbox help output match"
+
       - name: Verify catalog agent count and new packages
         run: |
           catalog_json=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json)
