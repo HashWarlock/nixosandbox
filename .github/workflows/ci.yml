@@ -251,7 +251,7 @@ jobs:
 
       - name: Install Docker via Colima
         run: |
-          brew install docker colima
+          brew install qemu docker colima
           colima start --arch x86_64 --cpu 3 --memory 8 --disk 32
           docker info
 
