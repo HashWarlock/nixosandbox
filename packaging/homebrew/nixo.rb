@@ -2,6 +2,7 @@ class Nixo < Formula
   desc "Reproducible, isolated sandbox environments for AI coding agents"
   homepage "https://github.com/HashWarlock/nixosandbox"
   version "0.1.0"
+  depends_on "nix"
 
   # Replace the placeholder sha256 values below with the published release checksums.
   on_macos do
@@ -33,6 +34,9 @@ class Nixo < Formula
   end
 
   test do
+    assert_predicate pkgshare/"flake/flake.nix", :exist?
+    assert_predicate pkgshare/"flake/flake.lock", :exist?
     assert_match "nixo", shell_output("#{bin}/nixo --help")
+    assert_match "nixo", shell_output("#{bin}/nixosandbox --help")
   end
 end
