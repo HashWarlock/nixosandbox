@@ -103,7 +103,9 @@ jobs:
           catalog_json=$(NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox catalog --json)
           agent_count=$(echo "$catalog_json" | python3 -c "import sys, json; d=json.load(sys.stdin); print(len(d['agents']))")
           echo "Catalog agent count: $agent_count"
-          [ "$agent_count" -gt 80 ] || { echo "ERROR: expected >80 agents, got $agent_count"; exit 1; }
+          # Threshold is conservative — guards against empty catalog, not exact upstream count.
+          # llm-agents.nix is a third-party input that may fluctuate; 50 is well above any realistic minimum.
+          [ "$agent_count" -gt 50 ] || { echo "ERROR: expected >50 agents, got $agent_count"; exit 1; }
           echo "$catalog_json" | python3 -c '
           import sys, json
           d = json.load(sys.stdin)
@@ -170,6 +172,9 @@ jobs:
           - agent: hermes-agent
             binary: hermes
             check: "--version"
+          - agent: jules
+            binary: jules
+            check: "--help"
     steps:
       - uses: actions/checkout@v6
 
