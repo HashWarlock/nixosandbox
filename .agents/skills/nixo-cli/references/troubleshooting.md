@@ -12,6 +12,17 @@
 - Re-run with `--json` only if you need structured output; it does not fix command errors.
 - If using `create --with`, make sure package names are valid and comma-separated.
 
+## `Could not find flake.nix`
+
+- Set flake root explicitly:
+  - `export NIXOSANDBOX_FLAKE_ROOT=/path/to/nixosandbox`
+- Verify the path:
+  - `test -f "$NIXOSANDBOX_FLAKE_ROOT/flake.nix" && echo ok`
+- Retry:
+  - `nixo catalog --json`
+- Alternative:
+  - run commands from the repository root that contains `flake.nix`.
+
 ## Sandbox creation problems
 
 - Prefer `--network off` unless the task needs network access.
