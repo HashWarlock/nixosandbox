@@ -136,6 +136,36 @@ Update README install and examples:
 - switch command examples to `nixo`
 - mention compatibility alias explicitly
 
+## 5) Catalog readability and grouping
+
+The current catalog output is functionally correct but hard to scan as agent count grows.
+
+### UX goals
+
+- Make `nixo catalog` easier for humans to scan quickly.
+- Preserve existing machine consumers that parse current `--json` output.
+- Offer richer grouped JSON for new consumers without forced migration.
+
+### Output behavior
+
+- `nixo catalog` (plain text):
+  - grouped by category by default (readability-first).
+- `nixo catalog --json`:
+  - keep current flat compatibility shape:
+    - top-level `agents` map
+    - top-level `tools` map
+- `nixo catalog --json --grouped`:
+  - return grouped JSON view for clients that want category structure.
+
+### Category model
+
+Use category labels aligned with `llm-agents.nix` README conventions where possible (for example `AI Coding Agents`, `AI Assistants`, `Code Review`, `Utilities`).
+
+Implementation note:
+
+- Category metadata is not currently exposed in the catalog query path.
+- Add a lightweight category mapping layer in `nixosandbox` (or derive from upstream metadata if later exposed) so grouping remains deterministic and stable.
+
 # Data flow and operations
 
 1. User runs `brew install <tap>/nixo`.
@@ -143,6 +173,7 @@ Update README install and examples:
 3. User executes `nixo create ...`.
 4. CLI behavior remains identical to current `nixosandbox` command handling.
 5. Agent runtimes discover `.agents/skills/nixo-cli/SKILL.md` and apply standard skill activation patterns.
+6. `nixo catalog` presents grouped human-readable sections while `--json` keeps flat compatibility by default.
 
 # Error handling and edge cases
 
@@ -170,6 +201,12 @@ Update README install and examples:
 - Add tests confirming both executable names function.
 - Ensure output parity for key commands.
 
+## Catalog UX tests
+
+- `nixo catalog` renders grouped sections with stable ordering.
+- `nixo catalog --json` remains backward-compatible with current shape.
+- `nixo catalog --json --grouped` returns grouped schema with deterministic category names.
+
 ## Skill validation tests
 
 - Validate skill frontmatter and file layout against Agent Skills expectations.
@@ -188,4 +225,3 @@ Update README install and examples:
 3. Update CLI branding/help and docs to `nixo`.
 4. Add `.agents/skills/nixo-cli` skill and references.
 5. Validate install + alias + skill discovery in CI/manual smoke tests.
-
