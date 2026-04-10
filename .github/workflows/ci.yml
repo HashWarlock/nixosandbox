@@ -109,11 +109,12 @@ jobs:
           echo "$catalog_json" | python3 -c '
           import sys, json
           d = json.load(sys.stdin)
-          missing = [n for n in ["openclaw", "hermes-agent", "jules"] if n not in d["agents"]]
+          agents = d["agents"]
+          missing = [n for n in ["openclaw", "hermes-agent", "jules"] if n not in agents]
           if missing:
               print(f"ERROR: missing agents: {missing}", file=sys.stderr)
               sys.exit(1)
-          print(f"All expected agents present in {len(d[\"agents\"])} total")
+          print(f"All expected agents present in {len(agents)} total")
           '
 
       - name: Test catalog filter
