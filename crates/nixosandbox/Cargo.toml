@@ -2,15 +2,16 @@
 name = "nixosandbox"
 version = "0.1.0"
 edition = "2021"
+autobins = false
 default-run = "nixo"
 
 [[bin]]
 name = "nixo"
-path = "src/main.rs"
+path = "src/bin/nixo.rs"
 
 [[bin]]
 name = "nixosandbox"
-path = "src/main.rs"
+path = "src/bin/nixosandbox.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
