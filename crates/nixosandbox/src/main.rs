@@ -8,11 +8,12 @@ mod session;
 mod spec;
 mod timestamps;
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use cli::{Cli, Commands};
 
 fn main() {
-    let cli = Cli::parse();
+    let matches = Cli::command().bin_name("nixo").get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     match cli.command {
         Commands::Create {

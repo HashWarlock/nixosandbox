@@ -38,7 +38,7 @@ nixo CLI (Rust)
 ```bash
 nix build github:HashWarlock/nixosandbox
 ./result/bin/nixo --help
-# `./result/bin/nixosandbox --help` also works as a compatibility alias
+./result/bin/nixosandbox --help
 ```
 
 ### Development shell
