@@ -35,6 +35,11 @@ nixo CLI (Rust)
 
 ### Homebrew
 
+`nixo` is published in the `HashWarlock/nixo` tap, but Homebrew does not install Nix for you. Install the host Nix CLI first, then install the formula:
+
+1. Install Nix on the host.
+2. Install `nixo` from the tap.
+
 ```bash
 brew tap HashWarlock/nixo
 brew install nixo
@@ -42,7 +47,7 @@ nixo --help
 nixosandbox --help  # compatibility alias
 ```
 
-[`Formula/nixo.rb`](Formula/nixo.rb) is the in-repo Homebrew formula for the `HashWarlock/nixo` tap. It installs `nixo` as the primary executable and `nixosandbox` as a compatibility symlink. The packaged release ships `bin/` plus `flake/` assets, so the installed command does not require a checkout of this repository. You still need a working Nix runtime on the host because the CLI shells out to `nix` at runtime. Replace the placeholder sha256 values before publishing a release.
+[`Formula/nixo.rb`](Formula/nixo.rb) is the in-repo Homebrew formula for the `HashWarlock/nixo` tap. It installs `nixo` as the primary executable and `nixosandbox` as a compatibility symlink. The packaged release ships `bin/` plus `flake/` assets, so the installed command does not require a checkout of this repository. At runtime, `nixo` still shells out to the host `nix` CLI; if `nix` is missing, the command exits with a focused error telling the user that the host Nix CLI is required.
 
 Before publishing or updating the formula, run:
 
@@ -58,6 +63,8 @@ To publish the first tap-backed release from this repo:
 3. Wait for the release workflow to upload the tarballs.
 4. Compute the real archive checksums and replace the placeholder `sha256` values in [`Formula/nixo.rb`](Formula/nixo.rb).
 5. Commit that formula update on `master`, then users can install with `brew tap HashWarlock/nixo && brew install nixo`.
+
+After tagged releases, the formula metadata in the tap is synced automatically by the release workflow.
 
 ### From source (requires Nix with flakes)
 

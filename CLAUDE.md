@@ -38,6 +38,11 @@ NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixosandbox --help  # compatibility ali
 NIXOSANDBOX_FLAKE_ROOT=$PWD ./result/bin/nixo destroy <session-id>
 ```
 
+### Homebrew release notes
+- This repository is its own `HashWarlock/nixo` tap.
+- The release workflow syncs formula metadata after tagged releases.
+- Homebrew installs `nixo`, but it does not install Nix for the user; the host `nix` CLI must already be available at runtime.
+
 ## Architecture
 
 ### Core data flow
