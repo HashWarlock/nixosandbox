@@ -1,24 +1,24 @@
 class Nixo < Formula
   desc "Reproducible, isolated sandbox environments for AI coding agents"
   homepage "https://github.com/HashWarlock/nixo"
-  version "0.1.3"
+  version "0.1.4"
 
   on_macos do
     on_arm do
       url "https://github.com/HashWarlock/nixo/releases/download/v#{version}/nixo-aarch64-apple-darwin.tar.gz"
-      sha256 "618a37e344b77fbf1d7246d7789f1c2d51645bda69825da610eb1728d2748a59"
+      sha256 "70e43515e50de21526a4d8996e0c46b09f1f5cf2444aaf94c73f1f59358e6550"
     end
 
     on_intel do
       url "https://github.com/HashWarlock/nixo/releases/download/v#{version}/nixo-x86_64-apple-darwin.tar.gz"
-      sha256 "01967dc3cceca365c026b324bb412be4b6faa2a5b59b82e482a5ff0e7816bc4e"
+      sha256 "6ba350e03ce42ee97e2780be10c687415ee02c93175c41b8af81f1b0d4ff91a5"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/HashWarlock/nixo/releases/download/v#{version}/nixo-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "1f5a02a5402dcd2e9865c894d756cc3e2d3530d9b33cae231836841075a33e75"
+      sha256 "4daf1061989ee625faa5c815a1f231bc9dbe3baf0f65faf8a88216e9a361b71e"
     end
   end
 
