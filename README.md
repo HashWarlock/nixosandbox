@@ -60,11 +60,10 @@ To publish the first tap-backed release from this repo:
 
 1. Merge the formula and release workflow to `master`.
 2. Create a version tag such as `v0.1.0`.
-3. Wait for the release workflow to upload the tarballs.
-4. Compute the real archive checksums and replace the placeholder `sha256` values in [`Formula/nixo.rb`](Formula/nixo.rb).
-5. Commit that formula update on `master`, then users can install with `brew tap HashWarlock/nixo && brew install nixo`.
+3. Wait for the `Release` workflow to upload the tarballs and, for stable tags, sync [`Formula/nixo.rb`](Formula/nixo.rb) automatically.
+4. Confirm users can install with `brew tap HashWarlock/nixo && brew install nixo`.
 
-After tagged releases, the formula metadata in the tap is synced automatically by the release workflow.
+After stable tagged releases, the formula metadata in the tap is synced automatically by the release workflow.
 
 ### From source (requires Nix with flakes)
 
