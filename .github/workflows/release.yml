@@ -83,16 +83,21 @@ jobs:
   sync-homebrew-formula:
     name: Sync Homebrew formula
     needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-24.04
+    concurrency:
+      group: sync-homebrew-formula-${{ github.event.repository.default_branch }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: master
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
       - name: Read release asset digests
         id: asset-digests
         env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
         shell: bash
@@ -128,23 +133,43 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Update formula
+        id: update-formula
         shell: bash
         run: |
           set -euo pipefail
+          current_version="$(ruby -e 'print(File.read("Formula/nixo.rb")[/^\s*version "([^"]+)"/, 1] || "")')"
+          target_version="${{ steps.asset-digests.outputs.version }}"
+
+          if [[ -z "$current_version" ]]; then
+            echo "::error::Could not read current Formula/nixo.rb version"
+            exit 1
+          fi
+
+          if [[ "$(printf '%s\n%s\n' "$current_version" "$target_version" | sort -V | tail -n1)" != "$target_version" ]]; then
+            echo "Skipping formula sync for older stable tag $target_version; current formula version is $current_version"
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           bash scripts/update_homebrew_formula.sh \
-            "${{ steps.asset-digests.outputs.version }}" \
+            "$target_version" \
             "${{ steps.asset-digests.outputs.macos_arm64_sha256 }}" \
             "${{ steps.asset-digests.outputs.macos_x86_64_sha256 }}" \
             "${{ steps.asset-digests.outputs.linux_x86_64_sha256 }}"
+          echo "updated=true" >> "$GITHUB_OUTPUT"
 
       - name: Validate formula
+        if: ${{ steps.update-formula.outputs.updated == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           ruby -c Formula/nixo.rb
 
       - name: Commit and push formula update
+        if: ${{ steps.update-formula.outputs.updated == 'true' }}
         shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
@@ -157,4 +182,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/nixo.rb
           git commit -m "ci: sync homebrew formula after release"
-          git push origin HEAD:master
+          git pull --rebase origin "$DEFAULT_BRANCH"
+          git push origin HEAD:"$DEFAULT_BRANCH"
