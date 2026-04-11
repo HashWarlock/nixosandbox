@@ -83,6 +83,12 @@ NSS
 ::1       localhost
 HOSTS
 
+  # /etc/resolv.conf -- default DNS resolver (overridden by bwrap bind-mount when available)
+  cat > $out/etc/resolv.conf <<'RESOLV'
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+RESOLV
+
   # Nix store reference -- keep a file that references the merged env
   # so nix-collect-garbage knows this rootfs depends on those packages
   echo "${mergedEnv}" > $out/.nix-env-reference

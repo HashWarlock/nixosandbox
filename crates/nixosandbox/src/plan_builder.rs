@@ -28,6 +28,11 @@ pub fn build_rootfs(
     argv.extend(["--tmpfs".to_string(), "/tmp".to_string()]);
     argv.extend(["--dev".to_string(), "/dev".to_string()]);
     argv.extend(["--proc".to_string(), "/proc".to_string()]);
+    // Bind-mount the host's DNS resolver config so sandboxed processes can resolve hostnames.
+    // Falls back to the static resolv.conf baked into the rootfs if the host file doesn't exist.
+    if std::path::Path::new("/etc/resolv.conf").exists() {
+        argv.extend(["--ro-bind".to_string(), "/etc/resolv.conf".to_string(), "/etc/resolv.conf".to_string()]);
+    }
     for ns in namespaces {
         match ns.as_str() {
             "pid" => argv.push("--unshare-pid".to_string()),
