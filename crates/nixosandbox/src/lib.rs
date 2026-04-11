@@ -498,12 +498,22 @@ fn cmd_exec(session_id: &str, json: bool, extra_env: Vec<String>, command: Vec<S
         use std::process::Command;
         let status = match &bwrap {
             bubblewrap::BwrapAvailability::DockerAvailable { container_id, .. } => {
-                let mut cmd_args = vec![
-                    "exec".to_string(),
-                    "-i".to_string(),
-                    container_id.clone(),
-                    "bwrap".to_string(),
-                ];
+                let mut cmd_args = vec!["exec".to_string()];
+                // Allocate a TTY when stdin is a terminal (needed for interactive shells, login flows, etc.)
+                #[cfg(unix)]
+                {
+                    if unsafe { libc::isatty(libc::STDIN_FILENO) } == 1 {
+                        cmd_args.push("-it".to_string());
+                    } else {
+                        cmd_args.push("-i".to_string());
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    cmd_args.push("-i".to_string());
+                }
+                cmd_args.push(container_id.clone());
+                cmd_args.push("bwrap".to_string());
                 cmd_args.extend(bwrap_argv);
                 Command::new("docker")
                     .args(&cmd_args)
