@@ -23,17 +23,15 @@ class Nixo < Formula
   end
 
   def install
-    libexec.install Dir["bin/*"]
-    pkgshare.install Dir["flake"]
-
-    flake_root = pkgshare/"flake"
-    bin.write_env_script libexec/"nixo", "NIXOSANDBOX_FLAKE_ROOT" => flake_root
-    bin.install_symlink "nixo" => "nixosandbox"
+    bin.install "bin/nixo", "bin/nixosandbox"
+    prefix.install "flake/flake.nix", "flake/flake.lock"
+    prefix.install "flake/nix"
   end
 
   test do
-    assert_predicate pkgshare/"flake/flake.nix", :exist?
-    assert_predicate pkgshare/"flake/flake.lock", :exist?
+    assert_predicate prefix/"flake.nix", :exist?
+    assert_predicate prefix/"flake.lock", :exist?
+    assert_predicate prefix/"nix", :exist?
     assert_match "nixo", shell_output("#{bin}/nixo --help")
     assert_match "nixo", shell_output("#{bin}/nixosandbox --help")
   end
