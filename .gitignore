@@ -108,3 +108,17 @@ tests/__pycache__/
 *.key
 credentials.json
 secrets.json
+
+# Pi Sandbox Extension
+packages/pi-sandbox-extension/node_modules/
+packages/pi-sandbox-extension/dist/
+
+# Rust / Cargo
+crates/nixosandbox/target/
+
+# Protocol tests
+tests/protocol/node_modules/
+.pi/
+
+# Local git worktrees
+.worktrees/

@@ -1,0 +1,186 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: crates/nixosandbox
+
+      - name: Build release binaries
+        working-directory: crates/nixosandbox
+        run: cargo build --locked --release --target "${{ matrix.target }}" --bin nixo --bin nixosandbox
+
+      - name: Package release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="${{ matrix.target }}"
+          package_dir="dist/nixo-${target}"
+          mkdir -p "$package_dir/bin" "$package_dir/flake"
+          install -m 755 "crates/nixosandbox/target/${target}/release/nixo" "$package_dir/bin/nixo"
+          install -m 755 "crates/nixosandbox/target/${target}/release/nixosandbox" "$package_dir/bin/nixosandbox"
+          install -m 644 flake.nix "$package_dir/flake/flake.nix"
+          install -m 644 flake.lock "$package_dir/flake/flake.lock"
+          cp -R nix "$package_dir/flake/"
+          tar -C "$package_dir" -czf "dist/nixo-${target}.tar.gz" bin flake
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            shasum -a 256 "dist/nixo-${target}.tar.gz" > "dist/nixo-${target}.tar.gz.sha256"
+          else
+            sha256sum "dist/nixo-${target}.tar.gz" > "dist/nixo-${target}.tar.gz.sha256"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nixo-${{ matrix.target }}
+          path: |
+            dist/nixo-${{ matrix.target }}.tar.gz
+            dist/nixo-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: nixo-*
+          path: release-assets
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+
+  sync-homebrew-formula:
+    name: Sync Homebrew formula
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: sync-homebrew-formula-${{ github.event.repository.default_branch }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Read release asset digests
+        id: asset-digests
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_assets_json="$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json assets)"
+
+          get_sha256() {
+            local asset_name="$1"
+            local digest
+
+            digest="$(printf '%s' "$release_assets_json" | jq -r --arg name "$asset_name" '.assets[] | select(.name == $name) | .digest // empty')"
+
+            if [[ -z "$digest" ]]; then
+              echo "::error::Missing digest for release asset $asset_name on tag $TAG_NAME"
+              exit 1
+            fi
+
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Invalid digest for release asset $asset_name: $digest"
+              exit 1
+            fi
+
+            printf '%s\n' "${digest#sha256:}"
+          }
+
+          {
+            echo "version=${TAG_NAME#v}"
+            echo "macos_arm64_sha256=$(get_sha256 "nixo-aarch64-apple-darwin.tar.gz")"
+            echo "macos_x86_64_sha256=$(get_sha256 "nixo-x86_64-apple-darwin.tar.gz")"
+            echo "linux_x86_64_sha256=$(get_sha256 "nixo-x86_64-unknown-linux-gnu.tar.gz")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update formula
+        id: update-formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_version="$(ruby -e 'print(File.read("Formula/nixo.rb")[/^\s*version "([^"]+)"/, 1] || "")')"
+          target_version="${{ steps.asset-digests.outputs.version }}"
+
+          if [[ -z "$current_version" ]]; then
+            echo "::error::Could not read current Formula/nixo.rb version"
+            exit 1
+          fi
+
+          if [[ "$(printf '%s\n%s\n' "$current_version" "$target_version" | sort -V | tail -n1)" != "$target_version" ]]; then
+            echo "Skipping formula sync for older stable tag $target_version; current formula version is $current_version"
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          bash scripts/update_homebrew_formula.sh \
+            "$target_version" \
+            "${{ steps.asset-digests.outputs.macos_arm64_sha256 }}" \
+            "${{ steps.asset-digests.outputs.macos_x86_64_sha256 }}" \
+            "${{ steps.asset-digests.outputs.linux_x86_64_sha256 }}"
+          echo "updated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Validate formula
+        if: ${{ steps.update-formula.outputs.updated == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c Formula/nixo.rb
+
+      - name: Commit and push formula update
+        if: ${{ steps.update-formula.outputs.updated == 'true' }}
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- Formula/nixo.rb; then
+            echo "Formula/nixo.rb is already up to date"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/nixo.rb
+          git commit -m "ci: sync homebrew formula after release"
+          git pull --rebase origin "$DEFAULT_BRANCH"
+          git push origin HEAD:"$DEFAULT_BRANCH"
