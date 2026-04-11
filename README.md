@@ -47,24 +47,6 @@ nixo --help
 nixosandbox --help  # compatibility alias
 ```
 
-[`Formula/nixo.rb`](Formula/nixo.rb) is the in-repo Homebrew formula for the `HashWarlock/nixo` tap. It installs `nixo` as the primary executable and `nixosandbox` as a compatibility symlink. The packaged release ships `bin/` plus `flake/` assets, so the installed command does not require a checkout of this repository. At runtime, `nixo` still shells out to the host `nix` CLI; if `nix` is missing, the command exits with a focused error telling the user that the host Nix CLI is required.
-
-Before publishing or updating the formula, run:
-
-```bash
-brew audit --strict nixo
-brew test nixo
-```
-
-To publish the first tap-backed release from this repo:
-
-1. Merge the formula and release workflow to `master`.
-2. Create a version tag such as `v0.1.0`.
-3. Wait for the `Release` workflow to upload the tarballs and, for stable tags, sync [`Formula/nixo.rb`](Formula/nixo.rb) automatically.
-4. Confirm users can install with `brew tap HashWarlock/nixo && brew install nixo`.
-
-After stable tagged releases, the formula metadata in the tap is synced automatically by the release workflow.
-
 ### From source (requires Nix with flakes)
 
 ```bash
